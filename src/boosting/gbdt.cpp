@@ -17,6 +17,9 @@
 
 namespace LightGBM {
 
+#ifdef TIMETAG
+std::chrono::duration<double, std::milli> boosting_time;
+#endif  // TIMETAG
 
 GBDT::GBDT() : iter_(0),
 train_data_(nullptr),
@@ -41,6 +44,9 @@ balanced_bagging_(false) {
 }
 
 GBDT::~GBDT() {
+  #ifdef TIMETAG
+  Log::Info("GBDT::boosting_time costs %f", boosting_time * 1e-3);
+  #endif
 }
 
 void GBDT::Init(const Config* config, const Dataset* train_data, const ObjectiveFunction* objective_function,
@@ -148,6 +154,9 @@ void GBDT::AddValidDataset(const Dataset* valid_data,
 }
 
 void GBDT::Boosting() {
+  #ifdef TIMETAG
+  auto start_time = std::chrono::steady_clock::now();
+  #endif
   if (objective_function_ == nullptr) {
     Log::Fatal("No object function provided");
   }
@@ -155,6 +164,9 @@ void GBDT::Boosting() {
   int64_t num_score = 0;
   objective_function_->
     GetGradients(GetTrainingScore(&num_score), gradients_.data(), hessians_.data());
+  #ifdef TIMETAG
+  boosting_time += std::chrono::steady_clock::now() - start_time;
+  #endif
 }
 
 data_size_t GBDT::BaggingHelper(Random* cur_rand, data_size_t start, data_size_t cnt, data_size_t* buffer) {
