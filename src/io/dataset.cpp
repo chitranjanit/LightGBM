@@ -1201,7 +1201,7 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
       std::memset(reinterpret_cast<void*>(data_ptr), 0, num_bin* KHistEntrySize);
 
       // don't merge bin 0
-      const int min_block_size = 1024;
+      const int min_block_size = 512;
       const int n_block = (num_bin + min_block_size - 1) / min_block_size;
       if (!is_constant_hessian) {
         #pragma omp parallel for schedule(static)
@@ -1210,6 +1210,9 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
           const int end = std::min(start + min_block_size, num_bin);
           for (int tid = 0; tid < n_part; ++tid) {
             auto src_ptr = hist_buf_[tid].data();
+            if (tid + 1 < n_part) {
+              PREFETCH_T0(hist_buf_[tid + 1].data() + start * 2);
+            }
             int rest = (end * 2 - start * 2) % 4;
             int i = start * 2;
             for (; i < end * 2 - rest; i += 4) {
