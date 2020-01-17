@@ -175,13 +175,7 @@ public:
       }
       for (data_size_t i = 0; i < num_data; ++i) {
         const data_size_t idx = data_indices[i];
-        VAL_T bin = t_most_freq_bin;
-        for (data_size_t j = RowPtr(idx); j < RowPtr(idx + 1); ++j) {
-          if (data_[j] >= minb && data_[j] <= maxb) {
-            bin = data_[j];
-            break;
-          }
-        }
+        VAL_T bin = FindNoLess(idx, minb, maxb, t_most_freq_bin);
         if (bin == maxb) {
           missing_default_indices[(*missing_default_count)++] = idx;
         } else if (t_most_freq_bin == bin) {
@@ -201,13 +195,7 @@ public:
       if (default_bin == most_freq_bin) {
         for (data_size_t i = 0; i < num_data; ++i) {
           const data_size_t idx = data_indices[i];
-          VAL_T bin = t_most_freq_bin;
-          for (data_size_t j = RowPtr(idx); j < RowPtr(idx + 1); ++j) {
-            if (data_[j] >= minb && data_[j] <= maxb) {
-              bin = data_[j];
-              break;
-            }
-          }
+          VAL_T bin = FindNoLess(idx, minb, maxb, t_most_freq_bin);
           if (t_most_freq_bin == bin) {
             missing_default_indices[(*missing_default_count)++] = idx;
           } else if (bin > th) {
@@ -219,13 +207,7 @@ public:
       } else {
         for (data_size_t i = 0; i < num_data; ++i) {
           const data_size_t idx = data_indices[i];
-          VAL_T bin = t_most_freq_bin;
-          for (data_size_t j = RowPtr(idx); j < RowPtr(idx + 1); ++j) {
-            if (data_[j] >= minb && data_[j] <= maxb) {
-              bin = data_[j];
-              break;
-            }
-          }
+          VAL_T bin = FindNoLess(idx, minb, maxb, t_most_freq_bin);
           if (bin == t_default_bin) {
             missing_default_indices[(*missing_default_count)++] = idx;
           } else if (t_most_freq_bin == bin) {
@@ -256,13 +238,7 @@ public:
     }
     for (data_size_t i = 0; i < num_data; ++i) {
       const data_size_t idx = data_indices[i];
-      uint32_t bin = most_freq_bin;
-      for (data_size_t j = RowPtr(idx); j < RowPtr(idx + 1); ++j) {
-        if (data_[j] >= min_bin && data_[j] <= max_bin) {
-          bin = data_[j];
-          break;
-        }
-      }
+      uint32_t bin = FindNoLess(idx, min_bin, max_bin, most_freq_bin);
       if (bin == most_freq_bin) {
         default_indices[(*default_count)++] = idx;
       } else if (Common::FindInBitset(threshold, num_threahold, bin - min_bin)) {
@@ -346,6 +322,15 @@ public:
     return row_ptr_[idx];
   }
 
+  inline data_size_t FindNoLess(data_size_t idx, VAL_T min_bin, VAL_T max_bin, VAL_T default_bin) const {
+    auto i = Common::FirstNoLess<VAL_T>(data_.data(), min_bin, RowPtr(idx), RowPtr(idx + 1));
+    if (data_[i] >= min_bin && data_[i] <= max_bin && i < RowPtr(idx + 1)) {
+      return data_[i];
+    } else {
+      return default_bin;
+    }
+  }
+
   size_t SizesInByte() const override {
     return sizeof(data_size_t) * (num_data_ + 2) + sizeof(VAL_T) * data_.size();
   }
@@ -371,11 +356,10 @@ MultiValDenseBin<VAL_T>* MultiValDenseBin<VAL_T>::Clone() {
 
 template <typename VAL_T>
 uint32_t MultiValDenseBinIterator<VAL_T>::Get(data_size_t idx) {
-  for (data_size_t i = bin_data_->RowPtr(idx); i < bin_data_->RowPtr(idx + 1); ++i) {
-    if (bin_data_->data_[i] >= min_bin_ && bin_data_->data_[i] <= max_bin_) {
-      return bin_data_->data_[i] - min_bin_ + offset_;
-    }
-  }
+  auto i = Common::FirstNoLess<VAL_T>(bin_data_->data_.data(), min_bin_, bin_data_->RowPtr(idx), bin_data_->RowPtr(idx + 1));
+  if (bin_data_->data_[i] >= min_bin_ && bin_data_->data_[i] <= max_bin_ && i < bin_data_->RowPtr(idx + 1)) {
+    return bin_data_->data_[i] - min_bin_ + offset_;
+  } 
   return most_freq_bin_;
 }
 

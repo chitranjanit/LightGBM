@@ -199,7 +199,7 @@ class FeatureGroup {
     data_size_t* lte_indices, data_size_t* gt_indices) const {
     uint32_t default_bin = bin_mappers_[sub_feature]->GetDefaultBin();
     uint32_t most_freq_bin = bin_mappers_[sub_feature]->GetMostFreqBin();
-    if (!is_multi_val_) {
+    if (true) {
       uint32_t min_bin = bin_offsets_[sub_feature];
       uint32_t max_bin = bin_offsets_[sub_feature + 1] - 1;
       if (bin_mappers_[sub_feature]->bin_type() == BinType::NumericalBin) {
