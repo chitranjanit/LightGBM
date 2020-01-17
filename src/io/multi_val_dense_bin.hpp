@@ -67,7 +67,6 @@ public:
   void ReSize(data_size_t num_data) override {
     if (num_data_ != num_data) {
       num_data_ = num_data;
-      row_ptr_offset_.resize((num_data_ + 1) >> shift_);
       row_ptr_.resize(num_data_ + 1);
     }
   }
@@ -85,9 +84,8 @@ public:
     const data_size_t prefetch_size = 16;
     for (data_size_t i = start; i < end; ++i) {
       if (prefetch_size + i < end) {
-        PREFETCH_T0(row_ptr_offset_.data() + ((data_indices[i + prefetch_size]) >> shift_));
         PREFETCH_T0(row_ptr_.data() + data_indices[i + prefetch_size]);
-        PREFETCH_T0(data_.data() + row_ptr_offset_[data_indices[i + prefetch_size] >> shift_] + row_ptr_[data_indices[i + prefetch_size]]);
+        PREFETCH_T0(data_.data() + row_ptr_[data_indices[i + prefetch_size]]);
       }
       for (data_size_t idx = RowPtr(data_indices[i]); idx < RowPtr(data_indices[i] + 1); ++idx) {
         const VAL_T bin = data_[idx];
@@ -102,9 +100,8 @@ public:
     const data_size_t prefetch_size = 16;
     for (data_size_t i = start; i < end; ++i) {
       if (prefetch_size + i < end) {
-        PREFETCH_T0(row_ptr_offset_.data() + ((i + prefetch_size) >> shift_));
         PREFETCH_T0(row_ptr_.data() + i + prefetch_size);
-        PREFETCH_T0(data_.data() + row_ptr_offset_[(i + prefetch_size) >> shift_] + row_ptr_[i + prefetch_size]);
+        PREFETCH_T0(data_.data() + row_ptr_[i + prefetch_size]);
       }
       for (data_size_t idx = RowPtr(i); idx < RowPtr(i + 1); ++idx) {
         const VAL_T bin = data_[idx];
@@ -119,9 +116,8 @@ public:
     const data_size_t prefetch_size = 16;
     for (data_size_t i = start; i < end; ++i) {
       if (prefetch_size + i < end) {
-        PREFETCH_T0(row_ptr_offset_.data() + ((data_indices[i + prefetch_size]) >> shift_));
         PREFETCH_T0(row_ptr_.data() + data_indices[i + prefetch_size]);
-        PREFETCH_T0(data_.data() + row_ptr_offset_[data_indices[i + prefetch_size] >> shift_] + row_ptr_[data_indices[i + prefetch_size]]);
+        PREFETCH_T0(data_.data() +  row_ptr_[data_indices[i + prefetch_size]]);
       }
       for (data_size_t idx = RowPtr(data_indices[i]); idx < RowPtr(data_indices[i] + 1); ++idx) {
         const VAL_T bin = data_[idx];
@@ -136,9 +132,8 @@ public:
     const data_size_t prefetch_size = 16;
     for (data_size_t i = start; i < end; ++i) {
       if (prefetch_size + i < end) {
-        PREFETCH_T0(row_ptr_offset_.data() + ((i + prefetch_size) >> shift_));
         PREFETCH_T0(row_ptr_.data() + i + prefetch_size);
-        PREFETCH_T0(data_.data() + row_ptr_offset_[(i + prefetch_size) >> shift_] + row_ptr_[i + prefetch_size]);
+        PREFETCH_T0(data_.data() + row_ptr_[i + prefetch_size]);
       }
       for (data_size_t idx = RowPtr(i); idx < RowPtr(i + 1); ++idx) {
         const VAL_T bin = data_[idx];
@@ -283,20 +278,6 @@ public:
 
   void FinishLoad() override {
     data_.clear();
-
-    int max_cnt_feat = 0;
-    for (data_size_t i = 0; i < num_data_; ++i) {
-      max_cnt_feat = std::max(max_cnt_feat, static_cast<int>(push_buf_[i].size()));
-    }
-    shift_ = 0;
-    while (max_cnt_feat <= 128) {
-      shift_ += 1;
-      max_cnt_feat *= 2;
-    }
-    if (shift_ == 0 || shift_ == 8) {
-      Log::Fatal("");
-    }
-    row_ptr_offset_.resize(((num_data_ + 1) >> shift_) + 1, 0);
     row_ptr_.resize(num_data_ + 1, 0);
     data_size_t cur_pos = 0;
     for (data_size_t i = 0; i < num_data_; ++i) {
@@ -306,11 +287,7 @@ public:
       }
       push_buf_[i].clear();
       cur_pos += cnt_feat;
-      auto offset_i = (i + 1) >> shift_;
-      if ((offset_i << shift_) == (i + 1)) {
-        row_ptr_offset_[offset_i] = cur_pos;
-      }
-      row_ptr_[i + 1] = static_cast<uint8_t>(cur_pos - row_ptr_offset_[offset_i]);
+      row_ptr_[i + 1] = cur_pos;
     }
     push_buf_.clear();
     push_buf_.shrink_to_fit();
@@ -366,7 +343,7 @@ public:
   }
 
   inline data_size_t RowPtr(data_size_t idx) const {
-    return row_ptr_offset_[idx >> shift_] + row_ptr_[idx];
+    return row_ptr_[idx];
   }
 
   size_t SizesInByte() const override {
@@ -378,8 +355,7 @@ public:
 private:
   data_size_t num_data_;
   std::vector<VAL_T> data_;
-  std::vector<data_size_t> row_ptr_offset_;
-  std::vector<uint8_t> row_ptr_;
+  std::vector<data_size_t> row_ptr_;
   uint8_t shift_;
   std::vector<std::vector<VAL_T>> push_buf_;
 
