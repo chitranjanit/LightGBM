@@ -30,6 +30,7 @@ namespace LightGBM {
 std::chrono::duration<double, std::milli> dense_bin_time;
 std::chrono::duration<double, std::milli> sparse_bin_time;
 std::chrono::duration<double, std::milli> sparse_hist_prep_time;
+std::chrono::duration<double, std::milli> sparse_hist_reset_time;
 std::chrono::duration<double, std::milli> sparse_hist_merge_time;
 #endif  // TIMETAG
 
@@ -55,6 +56,7 @@ Dataset::~Dataset() {
   Log::Info("Dataset::dense_bin_time costs %f", dense_bin_time * 1e-3);
   Log::Info("Dataset::sparse_bin_time costs %f", sparse_bin_time * 1e-3);
   Log::Info("Dataset::sparse_hist_prep_time costs %f", sparse_hist_prep_time * 1e-3);
+  Log::Info("Dataset::sparse_hist_reset_time costs %f", sparse_hist_reset_time * 1e-3);
   Log::Info("Dataset::sparse_hist_merge_time costs %f", sparse_hist_merge_time * 1e-3);
   #endif
 }
@@ -224,76 +226,81 @@ std::vector<std::vector<int>> FindGroups(const std::vector<std::unique_ptr<BinMa
   const int max_concurrent_feature_per_group = 64;
   const int max_bin_per_multi_val_group = 1 << 14;
 
-  // second round: fill the multi-val group
+  features_in_group.emplace_back();
+  multi_val_group->push_back(true);
   for (auto fidx : second_round_features) {
-    bool is_filtered_feature = fidx >= num_sample_col;
-    const int cur_non_zero_cnt = is_filtered_feature ? 0 : num_per_col[fidx];
-    std::vector<int> available_groups;
-    for (int gid = 0; gid < static_cast<int>(features_in_group.size()); ++gid) {
-      auto cur_num_bin = group_num_bin[gid] + bin_mappers[fidx]->num_bin() + (bin_mappers[fidx]->GetDefaultBin() == 0 ? -1 : 0);
-      if (multi_val_group->at(gid) && group_num_bin[gid] + cur_num_bin > max_bin_per_multi_val_group) {
-        continue;
-      }
-      const int max_sample_cnt = forced_single_val_group[gid] ? total_sample_cnt + single_val_max_conflict_cnt : max_samples_per_multi_val_group;
-      if (group_total_data_cnt[gid] + cur_non_zero_cnt <= max_sample_cnt) {
-        if (!is_use_gpu || cur_num_bin <= max_bin_per_group) {
-          available_groups.push_back(gid);
-        }
-      }
-    }
-    
-    std::vector<int> search_groups;
-    if (!available_groups.empty()) {
-      int last = static_cast<int>(available_groups.size()) - 1;
-      auto indices = rand.Sample(last, std::min(last, max_search_group - 1));
-      // always push the last group
-      search_groups.push_back(available_groups.back());
-      for (auto idx : indices) {
-        search_groups.push_back(available_groups[idx]);
-      }
-    }
-    int best_gid = -1;
-    int best_conflict_cnt = total_sample_cnt + 1;
-    for (auto gid : search_groups) {
-      int rest_max_cnt = total_sample_cnt;
-      if (forced_single_val_group[gid]) {
-        rest_max_cnt = std::min(rest_max_cnt, single_val_max_conflict_cnt - group_total_data_cnt[gid] + group_used_row_cnt[gid]);
-      } 
-      const int cnt = is_filtered_feature ? 0 : GetConfilctCount(conflict_marks[gid], sample_indices[fidx], num_per_col[fidx], rest_max_cnt, max_concurrent_feature_per_group);
-      if (cnt < 0) {
-        continue;
-      }
-      if (cnt < best_conflict_cnt || (cnt == best_conflict_cnt && (forced_single_val_group[gid] || group_total_data_cnt[best_gid] > group_total_data_cnt[gid]))) {
-        best_conflict_cnt = cnt;
-        best_gid = gid;
-      }
-      if (cnt == 0 && forced_single_val_group[gid]) { break; }
-    }
-    if (best_gid >= 0) {
-      features_in_group[best_gid].push_back(fidx);
-      group_total_data_cnt[best_gid] += cur_non_zero_cnt;
-      group_used_row_cnt[best_gid] += cur_non_zero_cnt - best_conflict_cnt;
-      if (!is_filtered_feature) {
-        MarkUsed(&conflict_marks[best_gid], sample_indices[fidx], num_per_col[fidx]);
-      }
-      group_num_bin[best_gid] += bin_mappers[fidx]->num_bin() + (bin_mappers[fidx]->GetDefaultBin() == 0 ? -1 : 0);
-      if (!multi_val_group->at(best_gid) && group_total_data_cnt[best_gid] - group_used_row_cnt[best_gid] > single_val_max_conflict_cnt) {
-        multi_val_group->at(best_gid) = true;
-      }
-    } else {
-      forced_single_val_group.push_back(false);
-      features_in_group.emplace_back();
-      features_in_group.back().push_back(fidx);
-      conflict_marks.emplace_back(total_sample_cnt, 0);
-      if (!is_filtered_feature) {
-        MarkUsed(&(conflict_marks.back()), sample_indices[fidx], num_per_col[fidx]);
-      }
-      group_total_data_cnt.emplace_back(cur_non_zero_cnt);
-      group_used_row_cnt.emplace_back(cur_non_zero_cnt);
-      group_num_bin.push_back(1 + bin_mappers[fidx]->num_bin() + (bin_mappers[fidx]->GetDefaultBin() == 0 ? -1 : 0));
-      multi_val_group->push_back(false);
-    }
+    features_in_group.back().push_back(fidx);
   }
+  // second round: fill the multi-val group
+  //for (auto fidx : second_round_features) {
+  //  bool is_filtered_feature = fidx >= num_sample_col;
+  //  const int cur_non_zero_cnt = is_filtered_feature ? 0 : num_per_col[fidx];
+  //  std::vector<int> available_groups;
+  //  for (int gid = 0; gid < static_cast<int>(features_in_group.size()); ++gid) {
+  //    auto cur_num_bin = group_num_bin[gid] + bin_mappers[fidx]->num_bin() + (bin_mappers[fidx]->GetDefaultBin() == 0 ? -1 : 0);
+  //    if (multi_val_group->at(gid) && group_num_bin[gid] + cur_num_bin > max_bin_per_multi_val_group) {
+  //      continue;
+  //    }
+  //    const int max_sample_cnt = forced_single_val_group[gid] ? total_sample_cnt + single_val_max_conflict_cnt : max_samples_per_multi_val_group;
+  //    if (group_total_data_cnt[gid] + cur_non_zero_cnt <= max_sample_cnt) {
+  //      if (!is_use_gpu || cur_num_bin <= max_bin_per_group) {
+  //        available_groups.push_back(gid);
+  //      }
+  //    }
+  //  }
+  //  
+  //  std::vector<int> search_groups;
+  //  if (!available_groups.empty()) {
+  //    int last = static_cast<int>(available_groups.size()) - 1;
+  //    auto indices = rand.Sample(last, std::min(last, max_search_group - 1));
+  //    // always push the last group
+  //    search_groups.push_back(available_groups.back());
+  //    for (auto idx : indices) {
+  //      search_groups.push_back(available_groups[idx]);
+  //    }
+  //  }
+  //  int best_gid = -1;
+  //  int best_conflict_cnt = total_sample_cnt + 1;
+  //  for (auto gid : search_groups) {
+  //    int rest_max_cnt = total_sample_cnt;
+  //    if (forced_single_val_group[gid]) {
+  //      rest_max_cnt = std::min(rest_max_cnt, single_val_max_conflict_cnt - group_total_data_cnt[gid] + group_used_row_cnt[gid]);
+  //    } 
+  //    const int cnt = is_filtered_feature ? 0 : GetConfilctCount(conflict_marks[gid], sample_indices[fidx], num_per_col[fidx], rest_max_cnt, max_concurrent_feature_per_group);
+  //    if (cnt < 0) {
+  //      continue;
+  //    }
+  //    if (cnt < best_conflict_cnt || (cnt == best_conflict_cnt && (forced_single_val_group[gid] || group_total_data_cnt[best_gid] > group_total_data_cnt[gid]))) {
+  //      best_conflict_cnt = cnt;
+  //      best_gid = gid;
+  //    }
+  //    if (cnt == 0 && forced_single_val_group[gid]) { break; }
+  //  }
+  //  if (best_gid >= 0) {
+  //    features_in_group[best_gid].push_back(fidx);
+  //    group_total_data_cnt[best_gid] += cur_non_zero_cnt;
+  //    group_used_row_cnt[best_gid] += cur_non_zero_cnt - best_conflict_cnt;
+  //    if (!is_filtered_feature) {
+  //      MarkUsed(&conflict_marks[best_gid], sample_indices[fidx], num_per_col[fidx]);
+  //    }
+  //    group_num_bin[best_gid] += bin_mappers[fidx]->num_bin() + (bin_mappers[fidx]->GetDefaultBin() == 0 ? -1 : 0);
+  //    if (!multi_val_group->at(best_gid) && group_total_data_cnt[best_gid] - group_used_row_cnt[best_gid] > single_val_max_conflict_cnt) {
+  //      multi_val_group->at(best_gid) = true;
+  //    }
+  //  } else {
+  //    forced_single_val_group.push_back(false);
+  //    features_in_group.emplace_back();
+  //    features_in_group.back().push_back(fidx);
+  //    conflict_marks.emplace_back(total_sample_cnt, 0);
+  //    if (!is_filtered_feature) {
+  //      MarkUsed(&(conflict_marks.back()), sample_indices[fidx], num_per_col[fidx]);
+  //    }
+  //    group_total_data_cnt.emplace_back(cur_non_zero_cnt);
+  //    group_used_row_cnt.emplace_back(cur_non_zero_cnt);
+  //    group_num_bin.push_back(1 + bin_mappers[fidx]->num_bin() + (bin_mappers[fidx]->GetDefaultBin() == 0 ? -1 : 0));
+  //    multi_val_group->push_back(false);
+  //  }
+  //}
   return features_in_group;
 }
 
@@ -1137,14 +1144,10 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
       #endif
       int group = used_sparse_group[gi];
       const int num_bin = feature_groups_[group]->num_total_bin_;
-      if (hist_buf_.empty()) {
-        hist_buf_.resize(num_threads);
-      }
-      if (2 * num_bin > static_cast<int>(hist_buf_[0].size())) {
-        for (int i = 0; i < num_threads; ++i) {
-          hist_buf_[i].resize(2 * num_bin);
-        }
-        Log::Info("number of buffered bin %d", num_bin);
+      const int num_bin_aligned = (num_bin + 31) / 32 * 32;
+      if (hist_buf_.size() < 2 * num_bin_aligned * (num_threads -1 )) {
+        hist_buf_.resize(2 * num_bin_aligned * (num_threads - 1));
+        Log::Info("number of buffered bin %d, aligned to ", num_bin, num_bin_aligned);
       }
       #ifdef TIMETAG
       sparse_hist_prep_time += std::chrono::steady_clock::now() - start_time;
@@ -1153,11 +1156,16 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
       const int min_row_size = 512;
       const int n_part = std::min(num_threads, (num_data + min_row_size - 1) / min_row_size);
       const int step = (num_data + n_part - 1) / n_part;
+      auto ori_data_ptr = hist_data + group_bin_boundaries_aligned_[group] * 2;
+      
       #pragma omp parallel for schedule(static)
       for (int tid = 0; tid < n_part; ++tid) {
         data_size_t start = tid * step;
         data_size_t end = std::min(start + step, num_data);
-        auto data_ptr = hist_buf_[tid].data();
+        auto data_ptr = ori_data_ptr;
+        if (tid > 0) {
+          data_ptr = hist_buf_.data() + num_bin_aligned * 2 * (tid - 1);
+        }
         std::memset(reinterpret_cast<void*>(data_ptr), 0, num_bin* KHistEntrySize);
         if (data_indices != nullptr && num_data < num_data_) {
           if (!is_constant_hessian) {
@@ -1197,9 +1205,6 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
       sparse_bin_time += std::chrono::steady_clock::now() - start_time;
       start_time = std::chrono::steady_clock::now();
       #endif
-      auto data_ptr = hist_data + group_bin_boundaries_aligned_[group] * 2;
-      std::memset(reinterpret_cast<void*>(data_ptr), 0, num_bin* KHistEntrySize);
-
       // don't merge bin 0
       const int min_block_size = 512;
       const int n_block = (num_bin + min_block_size - 1) / min_block_size;
@@ -1208,18 +1213,15 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
         for (int t = 0; t < n_block; ++t) {
           const int start = t * min_block_size;
           const int end = std::min(start + min_block_size, num_bin);
-          for (int tid = 0; tid < n_part; ++tid) {
-            auto src_ptr = hist_buf_[tid].data();
-            if (tid + 1 < n_part) {
-              PREFETCH_T0(hist_buf_[tid + 1].data() + start * 2);
-            }
+          for (int tid = 1; tid < n_part; ++tid) {
+            auto src_ptr = hist_buf_.data() + num_bin_aligned * 2 * (tid - 1);
             int rest = (end * 2 - start * 2) % 4;
             int i = start * 2;
             for (; i < end * 2 - rest; i += 4) {
-              _mm256_store_pd(data_ptr + i, _mm256_add_pd(_mm256_load_pd(data_ptr + i), _mm256_load_pd(src_ptr + i)));
+              _mm256_store_pd(ori_data_ptr + i, _mm256_add_pd(_mm256_load_pd(ori_data_ptr + i), _mm256_load_pd(src_ptr + i)));
             }
             for (; i < end * 2; ++i) {
-              data_ptr[i] += src_ptr[i];
+              ori_data_ptr[i] += src_ptr[i];
             }
           }
         }
@@ -1228,14 +1230,14 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
         for (int t = 0; t < n_block; ++t) {
           const int start = t * min_block_size;
           const int end = std::min(start + min_block_size, num_bin);
-          for (int tid = 0; tid < n_part; ++tid) {
-            auto src_ptr = hist_buf_[tid].data();
+          for (int tid = 1; tid < n_part; ++tid) {
+            auto src_ptr = hist_buf_.data() + num_bin_aligned * 2 * (tid - 1);
             for (int i = start * 2; i < end * 2; i++) {
-              data_ptr[i] += src_ptr[i];
+              ori_data_ptr[i] += src_ptr[i];
             }
           }
           for (int i = start; i < end; i++) {
-            GET_HESS(data_ptr, i) = GET_HESS(data_ptr, i) * hessians[0];
+            GET_HESS(ori_data_ptr, i) = GET_HESS(ori_data_ptr, i) * hessians[0];
           }
         }
       }
