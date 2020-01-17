@@ -140,12 +140,12 @@ class FeatureGroup {
   */
   inline void PushData(int tid, int sub_feature_idx, data_size_t line_idx, double value) {
     uint32_t bin = bin_mappers_[sub_feature_idx]->ValueToBin(value);
-    if (bin == bin_mappers_[sub_feature_idx]->GetMostFreqBin()) { return; }    
+    if (bin == bin_mappers_[sub_feature_idx]->GetMostFreqBin()) { return; }
     if (bin_mappers_[sub_feature_idx]->GetMostFreqBin() == 0) {
       bin -= 1;
     }
     if (is_multi_val_) {
-      raw_bin_data_[sub_feature_idx]->Push(tid, line_idx, bin);
+      raw_bin_data_[sub_feature_idx]->Push(tid, line_idx, bin + 1);
     }
     bin += bin_offsets_[sub_feature_idx];
     bin_data_->Push(tid, line_idx, bin);
