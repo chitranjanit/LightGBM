@@ -838,7 +838,7 @@ public:
 
 private:
   std::vector<std::unique_ptr<FeatureHistogram[]>> pool_;
-  std::vector<std::vector<hist_t, AlignmentAllocator<hist_t, 32>>> data_;
+  std::vector<std::vector<hist_t, Common::AlignmentAllocator<hist_t, kAlignedSize>>> data_;
   std::vector<FeatureMetainfo> feature_metas_;
   int cache_size_;
   int total_size_;

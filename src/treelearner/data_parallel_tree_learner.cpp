@@ -186,7 +186,6 @@ void DataParallelTreeLearner<TREELEARNER_T>::FindBestSplitsFromHistograms(const 
 
     this->train_data_->FixHistogram(feature_index,
                                     this->smaller_leaf_splits_->sum_gradients(), this->smaller_leaf_splits_->sum_hessians(),
-                                    GetGlobalDataCountInLeaf(this->smaller_leaf_splits_->LeafIndex()),
                                     this->smaller_leaf_histogram_array_[feature_index].RawData());
     SplitInfo smaller_split;
     // find best threshold for smaller child

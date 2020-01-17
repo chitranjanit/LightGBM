@@ -379,13 +379,12 @@ class Dataset {
   inline uint64_t GroupBinBoundary(int group_idx) const {
     return group_bin_boundaries_[group_idx];
   }
+  inline uint64_t NumTotalBin() const {
+    return group_bin_boundaries_.back();
+  }
 
   inline uint64_t GroupBinBoundaryAlign(int group_idx) const {
     return group_bin_boundaries_aligned_[group_idx];
-  }
-  
-  inline uint64_t NumTotalBin() const {
-    return group_bin_boundaries_.back();
   }
 
   inline uint64_t NumTotalBinAligned() const {
@@ -440,8 +439,7 @@ class Dataset {
                            bool is_constant_hessian,
                            hist_t* histogram_data) const;
 
-  void FixHistogram(int feature_idx, double sum_gradient, double sum_hessian, data_size_t num_data,
-                    hist_t* data) const;
+  void FixHistogram(int feature_idx, double sum_gradient, double sum_hessian, hist_t* data) const;
 
   inline data_size_t Split(int feature,
                            const uint32_t* threshold, int num_threshold,  bool default_left,
@@ -651,7 +649,7 @@ class Dataset {
   bool use_missing_;
   bool zero_as_missing_;
   std::vector<int> feature_need_push_zeros_;
-  mutable  std::vector<hist_t, AlignmentAllocator<hist_t, 32>> hist_buf_;
+  mutable std::vector<hist_t, Common::AlignmentAllocator<hist_t, kAlignedSize>> hist_buf_;
 };
 
 }  // namespace LightGBM

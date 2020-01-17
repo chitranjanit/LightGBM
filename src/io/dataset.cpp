@@ -454,7 +454,7 @@ void Dataset::Construct(
   group_bin_boundaries_aligned_.push_back(num_total_bin_aligned);
   for (int i = 0; i < num_groups_; ++i) {
     num_total_bin += feature_groups_[i]->num_total_bin_;
-    num_total_bin_aligned += ((feature_groups_[i]->num_total_bin_ + 31) / 32) * 32;
+    num_total_bin_aligned += SIZE_ALIGNED(feature_groups_[i]->num_total_bin_);
     group_bin_boundaries_.push_back(num_total_bin);
     group_bin_boundaries_aligned_.push_back(num_total_bin_aligned);
   }
@@ -608,6 +608,7 @@ void Dataset::CopyFeatureMapperFrom(const Dataset* dataset) {
   feature2group_ = dataset->feature2group_;
   feature2subfeature_ = dataset->feature2subfeature_;
   group_bin_boundaries_ = dataset->group_bin_boundaries_;
+  group_bin_boundaries_aligned_ = dataset->group_bin_boundaries_aligned_;
   group_feature_start_ = dataset->group_feature_start_;
   group_feature_cnt_ = dataset->group_feature_cnt_;
   monotone_types_ = dataset->monotone_types_;
@@ -645,11 +646,16 @@ void Dataset::CreateValid(const Dataset* dataset) {
   label_idx_ = dataset->label_idx_;
   real_feature_idx_ = dataset->real_feature_idx_;
   group_bin_boundaries_.clear();
+  group_bin_boundaries_aligned_.clear();
   uint64_t num_total_bin = 0;
+  uint64_t num_total_bin_aligned = 0;
   group_bin_boundaries_.push_back(num_total_bin);
+  group_bin_boundaries_aligned_.push_back(num_total_bin_aligned);
   for (int i = 0; i < num_groups_; ++i) {
     num_total_bin += feature_groups_[i]->num_total_bin_;
+    num_total_bin_aligned += SIZE_ALIGNED(feature_groups_[i]->num_total_bin_);
     group_bin_boundaries_.push_back(num_total_bin);
+    group_bin_boundaries_aligned_.push_back(num_total_bin_aligned);
   }
   int last_group = 0;
   group_feature_start_.reserve(num_groups_);
@@ -835,8 +841,8 @@ void Dataset::SaveBinaryFile(const char* bin_filename) {
     writer->Write(binary_file_token, size_of_token);
     // get size of header
     size_t size_of_header = sizeof(num_data_) + sizeof(num_features_) + sizeof(num_total_features_)
-      + sizeof(int) * num_total_features_ + sizeof(label_idx_) + sizeof(num_groups_)
-      + 3 * sizeof(int) * num_features_ + sizeof(uint64_t) * (num_groups_ + 1) + 2 * sizeof(int) * num_groups_ + sizeof(int8_t) * num_features_
+      + sizeof(int) * num_total_features_ + sizeof(label_idx_) + sizeof(num_groups_) + sizeof(sparse_threshold_)
+      + 3 * sizeof(int) * num_features_ + sizeof(uint64_t) * (num_groups_ + 1) * 2 + 2 * sizeof(int) * num_groups_ + sizeof(int8_t) * num_features_
       + sizeof(double) * num_features_ + sizeof(int32_t) * num_total_features_ + sizeof(int) * 3 + sizeof(bool) * 2;
     // size of feature names
     for (int i = 0; i < num_total_features_; ++i) {
@@ -863,6 +869,7 @@ void Dataset::SaveBinaryFile(const char* bin_filename) {
     writer->Write(feature2group_.data(), sizeof(int) * num_features_);
     writer->Write(feature2subfeature_.data(), sizeof(int) * num_features_);
     writer->Write(group_bin_boundaries_.data(), sizeof(uint64_t) * (num_groups_ + 1));
+    writer->Write(group_bin_boundaries_aligned_.data(), sizeof(uint64_t) * (num_groups_ + 1));
     writer->Write(group_feature_start_.data(), sizeof(int) * num_groups_);
     writer->Write(group_feature_cnt_.data(), sizeof(int) * num_groups_);
     if (monotone_types_.empty()) {
@@ -1248,8 +1255,7 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
   }
 }
 
-void Dataset::FixHistogram(int feature_idx, double sum_gradient, double sum_hessian, data_size_t num_data,
-                           hist_t* data) const {
+void Dataset::FixHistogram(int feature_idx, double sum_gradient, double sum_hessian, hist_t* data) const {
   const int group = feature2group_[feature_idx];
   const int sub_feature = feature2subfeature_[feature_idx];
   const BinMapper* bin_mapper = feature_groups_[group]->bin_mappers_[sub_feature].get();
@@ -1324,6 +1330,11 @@ void Dataset::addFeaturesFrom(Dataset* other) {
   // Skip the leading 0 when copying group_bin_boundaries.
   for (auto i = other->group_bin_boundaries_.begin()+1; i < other->group_bin_boundaries_.end(); ++i) {
     group_bin_boundaries_.push_back(*i + bin_offset);
+  }
+  bin_offset = group_bin_boundaries_aligned_.back();
+  // Skip the leading 0 when copying group_bin_boundaries.
+  for (auto i = other->group_bin_boundaries_aligned_.begin() + 1; i < other->group_bin_boundaries_aligned_.end(); ++i) {
+    group_bin_boundaries_aligned_.push_back(*i + bin_offset);
   }
   PushOffset(&group_feature_start_, other->group_feature_start_, num_features_);
 

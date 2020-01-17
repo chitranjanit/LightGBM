@@ -45,7 +45,7 @@ public:
   explicit Dense4bitsBin(data_size_t num_data)
     : num_data_(num_data) {
     int len = (num_data_ + 1) / 2;
-    data_ = std::vector<uint8_t>(len, static_cast<uint8_t>(0));
+    data_.resize(len, static_cast<uint8_t>(0));
     buf_ = std::vector<uint8_t>(len, static_cast<uint8_t>(0));
   }
 
@@ -331,7 +331,7 @@ protected:
   }
 
   data_size_t num_data_;
-  std::vector<uint8_t> data_;
+  std::vector<uint8_t, Common::AlignmentAllocator<uint8_t, kAlignedSize>> data_;
   std::vector<uint8_t> buf_;
 };
 
