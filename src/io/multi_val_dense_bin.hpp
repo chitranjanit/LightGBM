@@ -258,6 +258,7 @@ public:
     data_size_t cur_pos = 0;
     for (data_size_t i = 0; i < num_data_; ++i) {
       data_size_t cnt_feat = static_cast<data_size_t>(push_buf_[i].size());
+      std::sort(push_buf_[i].begin(), push_buf_[i].end());
       for (data_size_t j = 0; j < cnt_feat; ++j) {
         data_.push_back(push_buf_[i][j]);
       }
