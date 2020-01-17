@@ -328,6 +328,11 @@ std::vector<std::vector<int>> FastFeatureBundling(const std::vector<std::unique_
                                                   data_size_t num_data,
                                                   bool is_use_gpu,
                                                   std::vector<bool>* multi_val_group) {
+  multi_val_group->clear();
+  multi_val_group->push_back(true);
+  std::vector<std::vector<int>> ret;
+  ret.push_back(used_features);
+  return ret;
   std::vector<size_t> feature_non_zero_cnt;
   feature_non_zero_cnt.reserve(used_features.size());
   // put dense feature first
@@ -589,7 +594,7 @@ void Dataset::FinishLoad() {
 #pragma omp parallel for schedule(guided)
     for (int i = 0; i < num_groups_; ++i) {
       OMP_LOOP_EX_BEGIN();
-      feature_groups_[i]->bin_data_->FinishLoad();
+      feature_groups_[i]->FinishLoad();
       OMP_LOOP_EX_END();
     }
     OMP_THROW_EX();
