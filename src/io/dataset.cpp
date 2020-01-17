@@ -226,81 +226,81 @@ std::vector<std::vector<int>> FindGroups(const std::vector<std::unique_ptr<BinMa
   const int max_concurrent_feature_per_group = 64;
   const int max_bin_per_multi_val_group = 1 << 14;
 
-  features_in_group.emplace_back();
-  multi_val_group->push_back(true);
-  for (auto fidx : second_round_features) {
-    features_in_group.back().push_back(fidx);
-  }
-  // second round: fill the multi-val group
+  //features_in_group.emplace_back();
+  //multi_val_group->push_back(true);
   //for (auto fidx : second_round_features) {
-  //  bool is_filtered_feature = fidx >= num_sample_col;
-  //  const int cur_non_zero_cnt = is_filtered_feature ? 0 : num_per_col[fidx];
-  //  std::vector<int> available_groups;
-  //  for (int gid = 0; gid < static_cast<int>(features_in_group.size()); ++gid) {
-  //    auto cur_num_bin = group_num_bin[gid] + bin_mappers[fidx]->num_bin() + (bin_mappers[fidx]->GetDefaultBin() == 0 ? -1 : 0);
-  //    if (multi_val_group->at(gid) && group_num_bin[gid] + cur_num_bin > max_bin_per_multi_val_group) {
-  //      continue;
-  //    }
-  //    const int max_sample_cnt = forced_single_val_group[gid] ? total_sample_cnt + single_val_max_conflict_cnt : max_samples_per_multi_val_group;
-  //    if (group_total_data_cnt[gid] + cur_non_zero_cnt <= max_sample_cnt) {
-  //      if (!is_use_gpu || cur_num_bin <= max_bin_per_group) {
-  //        available_groups.push_back(gid);
-  //      }
-  //    }
-  //  }
-  //  
-  //  std::vector<int> search_groups;
-  //  if (!available_groups.empty()) {
-  //    int last = static_cast<int>(available_groups.size()) - 1;
-  //    auto indices = rand.Sample(last, std::min(last, max_search_group - 1));
-  //    // always push the last group
-  //    search_groups.push_back(available_groups.back());
-  //    for (auto idx : indices) {
-  //      search_groups.push_back(available_groups[idx]);
-  //    }
-  //  }
-  //  int best_gid = -1;
-  //  int best_conflict_cnt = total_sample_cnt + 1;
-  //  for (auto gid : search_groups) {
-  //    int rest_max_cnt = total_sample_cnt;
-  //    if (forced_single_val_group[gid]) {
-  //      rest_max_cnt = std::min(rest_max_cnt, single_val_max_conflict_cnt - group_total_data_cnt[gid] + group_used_row_cnt[gid]);
-  //    } 
-  //    const int cnt = is_filtered_feature ? 0 : GetConfilctCount(conflict_marks[gid], sample_indices[fidx], num_per_col[fidx], rest_max_cnt, max_concurrent_feature_per_group);
-  //    if (cnt < 0) {
-  //      continue;
-  //    }
-  //    if (cnt < best_conflict_cnt || (cnt == best_conflict_cnt && (forced_single_val_group[gid] || group_total_data_cnt[best_gid] > group_total_data_cnt[gid]))) {
-  //      best_conflict_cnt = cnt;
-  //      best_gid = gid;
-  //    }
-  //    if (cnt == 0 && forced_single_val_group[gid]) { break; }
-  //  }
-  //  if (best_gid >= 0) {
-  //    features_in_group[best_gid].push_back(fidx);
-  //    group_total_data_cnt[best_gid] += cur_non_zero_cnt;
-  //    group_used_row_cnt[best_gid] += cur_non_zero_cnt - best_conflict_cnt;
-  //    if (!is_filtered_feature) {
-  //      MarkUsed(&conflict_marks[best_gid], sample_indices[fidx], num_per_col[fidx]);
-  //    }
-  //    group_num_bin[best_gid] += bin_mappers[fidx]->num_bin() + (bin_mappers[fidx]->GetDefaultBin() == 0 ? -1 : 0);
-  //    if (!multi_val_group->at(best_gid) && group_total_data_cnt[best_gid] - group_used_row_cnt[best_gid] > single_val_max_conflict_cnt) {
-  //      multi_val_group->at(best_gid) = true;
-  //    }
-  //  } else {
-  //    forced_single_val_group.push_back(false);
-  //    features_in_group.emplace_back();
-  //    features_in_group.back().push_back(fidx);
-  //    conflict_marks.emplace_back(total_sample_cnt, 0);
-  //    if (!is_filtered_feature) {
-  //      MarkUsed(&(conflict_marks.back()), sample_indices[fidx], num_per_col[fidx]);
-  //    }
-  //    group_total_data_cnt.emplace_back(cur_non_zero_cnt);
-  //    group_used_row_cnt.emplace_back(cur_non_zero_cnt);
-  //    group_num_bin.push_back(1 + bin_mappers[fidx]->num_bin() + (bin_mappers[fidx]->GetDefaultBin() == 0 ? -1 : 0));
-  //    multi_val_group->push_back(false);
-  //  }
+  //  features_in_group.back().push_back(fidx);
   //}
+  // second round: fill the multi-val group
+  for (auto fidx : second_round_features) {
+    bool is_filtered_feature = fidx >= num_sample_col;
+    const int cur_non_zero_cnt = is_filtered_feature ? 0 : num_per_col[fidx];
+    std::vector<int> available_groups;
+    for (int gid = 0; gid < static_cast<int>(features_in_group.size()); ++gid) {
+      auto cur_num_bin = group_num_bin[gid] + bin_mappers[fidx]->num_bin() + (bin_mappers[fidx]->GetDefaultBin() == 0 ? -1 : 0);
+      if (multi_val_group->at(gid) && group_num_bin[gid] + cur_num_bin > max_bin_per_multi_val_group) {
+        continue;
+      }
+      const int max_sample_cnt = forced_single_val_group[gid] ? total_sample_cnt + single_val_max_conflict_cnt : max_samples_per_multi_val_group;
+      if (group_total_data_cnt[gid] + cur_non_zero_cnt <= max_sample_cnt) {
+        if (!is_use_gpu || cur_num_bin <= max_bin_per_group) {
+          available_groups.push_back(gid);
+        }
+      }
+    }
+    
+    std::vector<int> search_groups;
+    if (!available_groups.empty()) {
+      int last = static_cast<int>(available_groups.size()) - 1;
+      auto indices = rand.Sample(last, std::min(last, max_search_group - 1));
+      // always push the last group
+      search_groups.push_back(available_groups.back());
+      for (auto idx : indices) {
+        search_groups.push_back(available_groups[idx]);
+      }
+    }
+    int best_gid = -1;
+    int best_conflict_cnt = total_sample_cnt + 1;
+    for (auto gid : search_groups) {
+      int rest_max_cnt = total_sample_cnt;
+      if (forced_single_val_group[gid]) {
+        rest_max_cnt = std::min(rest_max_cnt, single_val_max_conflict_cnt - group_total_data_cnt[gid] + group_used_row_cnt[gid]);
+      } 
+      const int cnt = is_filtered_feature ? 0 : GetConfilctCount(conflict_marks[gid], sample_indices[fidx], num_per_col[fidx], rest_max_cnt, max_concurrent_feature_per_group);
+      if (cnt < 0) {
+        continue;
+      }
+      if (cnt < best_conflict_cnt || (cnt == best_conflict_cnt && (forced_single_val_group[gid] || group_total_data_cnt[best_gid] > group_total_data_cnt[gid]))) {
+        best_conflict_cnt = cnt;
+        best_gid = gid;
+      }
+      if (cnt == 0 && forced_single_val_group[gid]) { break; }
+    }
+    if (best_gid >= 0) {
+      features_in_group[best_gid].push_back(fidx);
+      group_total_data_cnt[best_gid] += cur_non_zero_cnt;
+      group_used_row_cnt[best_gid] += cur_non_zero_cnt - best_conflict_cnt;
+      if (!is_filtered_feature) {
+        MarkUsed(&conflict_marks[best_gid], sample_indices[fidx], num_per_col[fidx]);
+      }
+      group_num_bin[best_gid] += bin_mappers[fidx]->num_bin() + (bin_mappers[fidx]->GetDefaultBin() == 0 ? -1 : 0);
+      if (!multi_val_group->at(best_gid) && group_total_data_cnt[best_gid] - group_used_row_cnt[best_gid] > single_val_max_conflict_cnt) {
+        multi_val_group->at(best_gid) = true;
+      }
+    } else {
+      forced_single_val_group.push_back(false);
+      features_in_group.emplace_back();
+      features_in_group.back().push_back(fidx);
+      conflict_marks.emplace_back(total_sample_cnt, 0);
+      if (!is_filtered_feature) {
+        MarkUsed(&(conflict_marks.back()), sample_indices[fidx], num_per_col[fidx]);
+      }
+      group_total_data_cnt.emplace_back(cur_non_zero_cnt);
+      group_used_row_cnt.emplace_back(cur_non_zero_cnt);
+      group_num_bin.push_back(1 + bin_mappers[fidx]->num_bin() + (bin_mappers[fidx]->GetDefaultBin() == 0 ? -1 : 0));
+      multi_val_group->push_back(false);
+    }
+  }
   return features_in_group;
 }
 
