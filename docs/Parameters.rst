@@ -186,6 +186,38 @@ Core Parameters
 Learning Control Parameters
 ---------------------------
 
+-  ``force_col_wise`` :raw-html:`<a id="force_col_wise" title="Permalink to this parameter" href="#force_col_wise">&#x1F517;&#xFE0E;</a>`, default = ``false``, type = bool
+
+   -  set ``force_col_wise=true`` will force LightGBM to use col-wise histogram build
+
+   -  Recommend ``force_col_wise=true`` when:
+
+      -  the number of cloumns is large, or the total number of bin is large
+
+      -  when ``num_threads`` is large, e.g. ``>20``
+
+      -  want to use small ``feature_fraction``, e.g. ``0.5``, to speed-up
+
+      -  want to reduce memory cost
+
+   -  when both ``force_col_wise`` and ``force_col_wise`` are ``false``, LightGBM will firstly try them both, and uses the faster one
+
+-  ``force_row_wise`` :raw-html:`<a id="force_row_wise" title="Permalink to this parameter" href="#force_row_wise">&#x1F517;&#xFE0E;</a>`, default = ``false``, type = bool
+
+   -  set ``force_row_wise=true`` will force LightGBM to use row-wise histogram build
+
+   -  Recommend ``force_row_wise=true`` when:
+
+      -  the number of data is large, and the number of total bin is relatively small
+
+      -  want to use small ``bagging``, or ``goss``, to speed-up
+
+      -  when ``num_threads`` is relatively small, e.g. ``<=16``
+
+   -  set ``force_row_wise=true`` will double the memory cost for Dataset object, if your memory is not enough, you can try ``force_col_wise=true``
+
+   -  when both ``force_col_wise`` and ``force_col_wise`` are ``false``, LightGBM will firstly try them both, and uses the faster one.
+
 -  ``max_depth`` :raw-html:`<a id="max_depth" title="Permalink to this parameter" href="#max_depth">&#x1F517;&#xFE0E;</a>`, default = ``-1``, type = int
 
    -  limit the max depth for tree model. This is used to deal with over-fitting when ``#data`` is small. Tree still grows leaf-wise

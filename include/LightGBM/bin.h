@@ -33,6 +33,7 @@ typedef double hist_t;
 
 const size_t KHistEntrySize = 2 * sizeof(hist_t);
 const int KHistOffset = 2;
+const double kSparseThreshold = 0.7;
 
 #define GET_GRAD(hist, i) hist[(i) << 1]
 #define GET_HESS(hist, i) hist[((i) << 1) + 1]

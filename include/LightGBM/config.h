@@ -212,6 +212,24 @@ struct Config {
 
   #pragma region Learning Control Parameters
 
+  // desc = set ``force_col_wise=true`` will force LightGBM to use col-wise histogram build
+  // desc = Recommend ``force_col_wise=true`` when:
+  // descl2 = the number of cloumns is large, or the total number of bin is large
+  // descl2 = when ``num_threads`` is large, e.g. ``>20``
+  // descl2 = want to use small ``feature_fraction``, e.g. ``0.5``, to speed-up
+  // descl2 = want to reduce memory cost
+  // desc = when both ``force_col_wise`` and ``force_col_wise`` are ``false``, LightGBM will firstly try them both, and uses the faster one
+  bool force_col_wise = false;
+
+  // desc = set ``force_row_wise=true`` will force LightGBM to use row-wise histogram build
+  // desc = Recommend ``force_row_wise=true`` when:
+  // descl2 = the number of data is large, and the number of total bin is relatively small
+  // descl2 = want to use small ``bagging``, or ``goss``, to speed-up
+  // descl2 = when ``num_threads`` is relatively small, e.g. ``<=16``
+  // desc = set ``force_row_wise=true`` will double the memory cost for Dataset object, if your memory is not enough, you can try ``force_col_wise=true``
+  // desc = when both ``force_col_wise`` and ``force_col_wise`` are ``false``, LightGBM will firstly try them both, and uses the faster one.
+  bool force_row_wise = false;
+
   // desc = limit the max depth for tree model. This is used to deal with over-fitting when ``#data`` is small. Tree still grows leaf-wise
   // desc = ``<= 0`` means no limit
   int max_depth = -1;

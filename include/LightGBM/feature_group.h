@@ -51,7 +51,7 @@ class FeatureGroup {
       raw_bin_data_.clear();
       for (int i = 0; i < num_feature_; ++i) {
         int addi = bin_mappers_[i]->GetMostFreqBin() == 0 ? 0 : 1;
-        if (bin_mappers_[i]->sparse_rate() > 0.8) {
+        if (bin_mappers_[i]->sparse_rate() >= kSparseThreshold) {
           raw_bin_data_.emplace_back(Bin::CreateSparseBin(num_data, bin_mappers_[i]->num_bin() + addi));
         } else {
           raw_bin_data_.emplace_back(Bin::CreateDenseBin(num_data, bin_mappers_[i]->num_bin() + addi));

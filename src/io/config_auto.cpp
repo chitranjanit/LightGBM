@@ -178,6 +178,8 @@ std::unordered_set<std::string> Config::parameter_set({
   "num_threads",
   "device_type",
   "seed",
+  "force_col_wise",
+  "force_row_wise",
   "max_depth",
   "min_data_in_leaf",
   "min_sum_hessian_in_leaf",
@@ -301,6 +303,10 @@ void Config::GetMembersFromString(const std::unordered_map<std::string, std::str
   CHECK(num_leaves <=131072);
 
   GetInt(params, "num_threads", &num_threads);
+
+  GetBool(params, "force_col_wise", &force_col_wise);
+
+  GetBool(params, "force_row_wise", &force_row_wise);
 
   GetInt(params, "max_depth", &max_depth);
 
@@ -581,6 +587,8 @@ std::string Config::SaveMembersToString() const {
   str_buf << "[learning_rate: " << learning_rate << "]\n";
   str_buf << "[num_leaves: " << num_leaves << "]\n";
   str_buf << "[num_threads: " << num_threads << "]\n";
+  str_buf << "[force_col_wise: " << force_col_wise << "]\n";
+  str_buf << "[force_row_wise: " << force_row_wise << "]\n";
   str_buf << "[max_depth: " << max_depth << "]\n";
   str_buf << "[min_data_in_leaf: " << min_data_in_leaf << "]\n";
   str_buf << "[min_sum_hessian_in_leaf: " << min_sum_hessian_in_leaf << "]\n";
