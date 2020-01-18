@@ -207,25 +207,26 @@ std::vector<std::vector<int>> FindGroups(const std::vector<std::unique_ptr<BinMa
   features_in_group = features_in_group2;
   conflict_marks = conflict_marks2;
   multi_val_group->resize(features_in_group.size(), false);
-
-  features_in_group.emplace_back();
-  conflict_marks.emplace_back(total_sample_cnt, false);
-  bool is_multi_val = false;
-  int conflict_cnt = 0;
-  for (auto fidx : second_round_features) {
-    features_in_group.back().push_back(fidx);
-    if (!is_multi_val) {
-      const int rest_max_cnt = single_val_max_conflict_cnt - conflict_cnt;
-      const auto cnt = GetConfilctCount(conflict_marks.back(), sample_indices[fidx], num_per_col[fidx], rest_max_cnt);
-      conflict_cnt += cnt;
-      if (cnt < 0 || conflict_cnt > single_val_max_conflict_cnt) {
-        is_multi_val = true;
-        continue;
+  if (!second_round_features.empty()) {
+    features_in_group.emplace_back();
+    conflict_marks.emplace_back(total_sample_cnt, false);
+    bool is_multi_val = false;
+    int conflict_cnt = 0;
+    for (auto fidx : second_round_features) {
+      features_in_group.back().push_back(fidx);
+      if (!is_multi_val) {
+        const int rest_max_cnt = single_val_max_conflict_cnt - conflict_cnt;
+        const auto cnt = GetConfilctCount(conflict_marks.back(), sample_indices[fidx], num_per_col[fidx], rest_max_cnt);
+        conflict_cnt += cnt;
+        if (cnt < 0 || conflict_cnt > single_val_max_conflict_cnt) {
+          is_multi_val = true;
+          continue;
+        }
+        MarkUsed(&(conflict_marks.back()), sample_indices[fidx], num_per_col[fidx]);
       }
-      MarkUsed(&(conflict_marks.back()), sample_indices[fidx], num_per_col[fidx]);
     }
+    multi_val_group->push_back(is_multi_val);
   }
-  multi_val_group->push_back(is_multi_val);
   return features_in_group;
 }
 
