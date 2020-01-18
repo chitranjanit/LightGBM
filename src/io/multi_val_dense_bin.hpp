@@ -175,7 +175,7 @@ public:
       }
       for (data_size_t i = 0; i < num_data; ++i) {
         const data_size_t idx = data_indices[i];
-        VAL_T bin = FindNoLess(idx, minb, maxb, t_most_freq_bin);
+        VAL_T bin = GetRawBin(idx, minb, maxb, t_most_freq_bin);
         if (bin == maxb) {
           missing_default_indices[(*missing_default_count)++] = idx;
         } else if (t_most_freq_bin == bin) {
@@ -195,7 +195,7 @@ public:
       if (default_bin == most_freq_bin) {
         for (data_size_t i = 0; i < num_data; ++i) {
           const data_size_t idx = data_indices[i];
-          VAL_T bin = FindNoLess(idx, minb, maxb, t_most_freq_bin);
+          VAL_T bin = GetRawBin(idx, minb, maxb, t_most_freq_bin);
           if (t_most_freq_bin == bin) {
             missing_default_indices[(*missing_default_count)++] = idx;
           } else if (bin > th) {
@@ -207,7 +207,7 @@ public:
       } else {
         for (data_size_t i = 0; i < num_data; ++i) {
           const data_size_t idx = data_indices[i];
-          VAL_T bin = FindNoLess(idx, minb, maxb, t_most_freq_bin);
+          VAL_T bin = GetRawBin(idx, minb, maxb, t_most_freq_bin);
           if (bin == t_default_bin) {
             missing_default_indices[(*missing_default_count)++] = idx;
           } else if (t_most_freq_bin == bin) {
@@ -238,7 +238,7 @@ public:
     }
     for (data_size_t i = 0; i < num_data; ++i) {
       const data_size_t idx = data_indices[i];
-      uint32_t bin = FindNoLess(idx, min_bin, max_bin, most_freq_bin);
+      uint32_t bin = GetRawBin(idx, min_bin, max_bin, most_freq_bin);
       if (bin == most_freq_bin) {
         default_indices[(*default_count)++] = idx;
       } else if (Common::FindInBitset(threshold, num_threahold, bin - min_bin)) {
@@ -323,9 +323,14 @@ public:
     return row_ptr_[idx];
   }
 
-  inline data_size_t FindNoLess(data_size_t idx, VAL_T min_bin, VAL_T max_bin, VAL_T default_bin) const {
-    auto i = Common::FirstNoLess<VAL_T>(data_.data(), min_bin, RowPtr(idx), RowPtr(idx + 1));
-    if (data_[i] >= min_bin && data_[i] <= max_bin && i < RowPtr(idx + 1)) {
+  inline VAL_T GetRawBin(data_size_t idx, VAL_T min_bin, VAL_T max_bin, VAL_T default_bin) const {
+    const data_size_t low = RowPtr(idx);
+    const data_size_t high = RowPtr(idx + 1);
+    if (low >= high) {
+      return default_bin;
+    }
+    auto i = Common::FirstNoLess<VAL_T>(data_.data(), min_bin, low, high);
+    if (i < high && data_[i] >= min_bin && data_[i] <= max_bin) {
       return data_[i];
     } else {
       return default_bin;
