@@ -323,17 +323,41 @@ public:
     return row_ptr_[idx];
   }
 
-  inline VAL_T GetRawBin(data_size_t idx, VAL_T min_bin, VAL_T max_bin, VAL_T default_bin) const {
-    const data_size_t low = RowPtr(idx);
-    const data_size_t high = RowPtr(idx + 1);
-    if (low >= high) {
-      return default_bin;
+  inline VAL_T GetRawBin(data_size_t idx, VAL_T min_bin, VAL_T max_bin, VAL_T most_freq_bin) const {
+    data_size_t low = RowPtr(idx);
+    const data_size_t ub = RowPtr(idx + 1);
+    data_size_t high = ub;
+    while (low < high) {
+      data_size_t mid = (low + high) >> 1;
+      if (data_[mid] < min_bin) {
+        low = mid + 1;
+      } else {
+        high = mid;
+      }
     }
-    auto i = Common::FirstNoLess<VAL_T>(data_.data(), min_bin, low, high);
-    if (i < high && data_[i] >= min_bin && data_[i] <= max_bin) {
-      return data_[i];
+    if (low < ub && data_[low] >= min_bin && data_[low] <= max_bin) {
+      return data_[low];
     } else {
-      return default_bin;
+      return most_freq_bin;
+    }
+  }
+
+  inline VAL_T GetBin(data_size_t idx, VAL_T min_bin, VAL_T max_bin, VAL_T most_freq_bin, int8_t offset) const {
+    data_size_t low = RowPtr(idx);
+    const data_size_t ub = RowPtr(idx + 1);
+    data_size_t high = ub;
+    while (low < high) {
+      data_size_t mid = (low + high) >> 1;
+      if (data_[mid] < min_bin) {
+        low = mid + 1;
+      } else {
+        high = mid;
+      }
+    }
+    if (low < ub && data_[low] >= min_bin && data_[low] <= max_bin) {
+      return data_[low] - min_bin + offset;
+    } else {
+      return most_freq_bin;
     }
   }
 
@@ -362,11 +386,7 @@ MultiValDenseBin<VAL_T>* MultiValDenseBin<VAL_T>::Clone() {
 
 template <typename VAL_T>
 uint32_t MultiValDenseBinIterator<VAL_T>::Get(data_size_t idx) {
-  auto i = Common::FirstNoLess<VAL_T>(bin_data_->data_.data(), min_bin_, bin_data_->RowPtr(idx), bin_data_->RowPtr(idx + 1));
-  if (bin_data_->data_[i] >= min_bin_ && bin_data_->data_[i] <= max_bin_ && i < bin_data_->RowPtr(idx + 1)) {
-    return bin_data_->data_[i] - min_bin_ + offset_;
-  } 
-  return most_freq_bin_;
+  return bin_data_->GetBin(idx, min_bin_, max_bin_, most_freq_bin_, offset_);
 }
 
 

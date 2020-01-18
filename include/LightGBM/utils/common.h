@@ -946,19 +946,6 @@ inline bool CheckAllowedJSON(const std::string& s) {
   return true;
 }
 
-template <typename T>
-static int FirstNoLess(const T* arr, T target, int low, int high) {
-  while (low < high) {
-    int mid = (low + high) >> 1;
-    if (arr[mid] < target) {
-      low = mid + 1;
-    } else {
-      high = mid;
-    }
-  }
-  return low;
-}
-
 template <typename T, std::size_t N = 32>
 class AlignmentAllocator {
 public:
