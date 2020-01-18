@@ -71,14 +71,11 @@ std::vector<std::vector<int>> NoGroup(
   return features_in_group;
 }
 
-int GetConfilctCount(const std::vector<uint8_t>& mark, const int* indices, int num_indices, data_size_t max_cnt, int max_feature_cnt) {
+int GetConfilctCount(const std::vector<bool>& mark, const int* indices, int num_indices, data_size_t max_cnt) {
   int ret = 0;
   for (int i = 0; i < num_indices; ++i) {
     if (mark[indices[i]]) {
       ++ret;
-      if (mark[indices[i]] + 1 > max_feature_cnt) {
-        return -1;
-      }
     }
     if (ret >= max_cnt) {
       return -1;
@@ -87,10 +84,10 @@ int GetConfilctCount(const std::vector<uint8_t>& mark, const int* indices, int n
   return ret;
 }
 
-void MarkUsed(std::vector<uint8_t>* mark, const int* indices, data_size_t num_indices) {
+void MarkUsed(std::vector<bool>* mark, const int* indices, data_size_t num_indices) {
   auto& ref_mark = *mark;
   for (int i = 0; i < num_indices; ++i) {
-    ref_mark[indices[i]] += 1;
+    ref_mark[indices[i]] = true;
   }
 }
 
@@ -127,12 +124,11 @@ std::vector<std::vector<int>> FindGroups(const std::vector<std::unique_ptr<BinMa
   const int max_search_group = 100;
   const int max_bin_per_group = 256;
   const data_size_t single_val_max_conflict_cnt = static_cast<data_size_t>(total_sample_cnt / 10000);
-  const data_size_t max_samples_per_multi_val_group = static_cast<data_size_t>(total_sample_cnt * 10);
   multi_val_group->clear();
 
   Random rand(num_data);
   std::vector<std::vector<int>> features_in_group;
-  std::vector<std::vector<uint8_t>> conflict_marks;
+  std::vector<std::vector<bool>> conflict_marks;
   std::vector<data_size_t> group_used_row_cnt;
   std::vector<data_size_t> group_total_data_cnt;
   std::vector<int> group_num_bin;
@@ -164,7 +160,7 @@ std::vector<std::vector<int>> FindGroups(const std::vector<std::unique_ptr<BinMa
     int best_conflict_cnt = -1;
     for (auto gid : search_groups) {
       const data_size_t rest_max_cnt = single_val_max_conflict_cnt - group_total_data_cnt[gid] + group_used_row_cnt[gid];
-      const data_size_t cnt = is_filtered_feature ? 0 : GetConfilctCount(conflict_marks[gid], sample_indices[fidx], num_per_col[fidx], rest_max_cnt, 1);
+      const data_size_t cnt = is_filtered_feature ? 0 : GetConfilctCount(conflict_marks[gid], sample_indices[fidx], num_per_col[fidx], rest_max_cnt);
       if (cnt >= 0 && cnt <= rest_max_cnt && cnt <= cur_non_zero_cnt / 2) {
         best_gid = gid;
         best_conflict_cnt = cnt;
@@ -182,7 +178,7 @@ std::vector<std::vector<int>> FindGroups(const std::vector<std::unique_ptr<BinMa
     } else {
       features_in_group.emplace_back();
       features_in_group.back().push_back(fidx);
-      conflict_marks.emplace_back(total_sample_cnt, 0);
+      conflict_marks.emplace_back(total_sample_cnt, false);
       if (!is_filtered_feature) {
         MarkUsed(&(conflict_marks.back()), sample_indices[fidx], num_per_col[fidx]);
       }
@@ -191,14 +187,9 @@ std::vector<std::vector<int>> FindGroups(const std::vector<std::unique_ptr<BinMa
       group_num_bin.push_back(1 + bin_mappers[fidx]->num_bin() + (bin_mappers[fidx]->GetDefaultBin() == 0 ? -1 : 0));
     }
   }
-
   std::vector<int> second_round_features;
   std::vector<std::vector<int>> features_in_group2;
-  std::vector<std::vector<uint8_t>> conflict_marks2;
-  std::vector<data_size_t> group_used_row_cnt2;
-  std::vector<data_size_t> group_total_data_cnt2;
-  std::vector<int> group_num_bin2;
-  std::vector<bool> forced_single_val_group;
+  std::vector<std::vector<bool>> conflict_marks2;
 
   const double dense_threshold = 0.4;
   for (int gid = 0; gid < static_cast<int>(features_in_group.size()); ++gid) {
@@ -206,10 +197,6 @@ std::vector<std::vector<int>> FindGroups(const std::vector<std::unique_ptr<BinMa
     if (dense_rate >= dense_threshold) {
       features_in_group2.push_back(std::move(features_in_group[gid]));
       conflict_marks2.push_back(std::move(conflict_marks[gid]));
-      group_used_row_cnt2.push_back(group_used_row_cnt[gid]);
-      group_total_data_cnt2.push_back(group_total_data_cnt[gid]);
-      group_num_bin2.push_back(group_num_bin[gid]);
-      forced_single_val_group.push_back(true);
     } else {
       for (auto fidx : features_in_group[gid]) {
         second_round_features.push_back(fidx);
@@ -219,102 +206,26 @@ std::vector<std::vector<int>> FindGroups(const std::vector<std::unique_ptr<BinMa
 
   features_in_group = features_in_group2;
   conflict_marks = conflict_marks2;
-  group_total_data_cnt = group_total_data_cnt2;
-  group_used_row_cnt = group_used_row_cnt2;
-  group_num_bin = group_num_bin2;
   multi_val_group->resize(features_in_group.size(), false);
-  const int max_concurrent_feature_per_group = 1024;
-  const int max_bin_per_multi_val_group = 1 << 14;
 
   features_in_group.emplace_back();
-  conflict_marks.emplace_back(total_sample_cnt, 0);
+  conflict_marks.emplace_back(total_sample_cnt, false);
   bool is_multi_val = false;
   int conflict_cnt = 0;
   for (auto fidx : second_round_features) {
     features_in_group.back().push_back(fidx);
     if (!is_multi_val) {
       const int rest_max_cnt = single_val_max_conflict_cnt - conflict_cnt;
-      const auto cnt = GetConfilctCount(conflict_marks.back(), sample_indices[fidx], num_per_col[fidx], rest_max_cnt, max_concurrent_feature_per_group);
+      const auto cnt = GetConfilctCount(conflict_marks.back(), sample_indices[fidx], num_per_col[fidx], rest_max_cnt);
       conflict_cnt += cnt;
       if (cnt < 0 || conflict_cnt > single_val_max_conflict_cnt) {
         is_multi_val = true;
         continue;
       }
-      conflict_cnt += cnt;
       MarkUsed(&(conflict_marks.back()), sample_indices[fidx], num_per_col[fidx]);
     }
   }
   multi_val_group->push_back(is_multi_val);
-  // second round: fill the multi-val group
-  //for (auto fidx : second_round_features) {
-  //  bool is_filtered_feature = fidx >= num_sample_col;
-  //  const int cur_non_zero_cnt = is_filtered_feature ? 0 : num_per_col[fidx];
-  //  std::vector<int> available_groups;
-  //  for (int gid = 0; gid < static_cast<int>(features_in_group.size()); ++gid) {
-  //    auto cur_num_bin = group_num_bin[gid] + bin_mappers[fidx]->num_bin() + (bin_mappers[fidx]->GetDefaultBin() == 0 ? -1 : 0);
-  //    if (multi_val_group->at(gid) && group_num_bin[gid] + cur_num_bin > max_bin_per_multi_val_group) {
-  //      continue;
-  //    }
-  //    const int max_sample_cnt = forced_single_val_group[gid] ? total_sample_cnt + single_val_max_conflict_cnt : max_samples_per_multi_val_group;
-  //    if (group_total_data_cnt[gid] + cur_non_zero_cnt <= max_sample_cnt) {
-  //      if (!is_use_gpu || cur_num_bin <= max_bin_per_group) {
-  //        available_groups.push_back(gid);
-  //      }
-  //    }
-  //  }
-  //  
-  //  std::vector<int> search_groups;
-  //  if (!available_groups.empty()) {
-  //    int last = static_cast<int>(available_groups.size()) - 1;
-  //    auto indices = rand.Sample(last, std::min(last, max_search_group - 1));
-  //     always push the last group
-  //    search_groups.push_back(available_groups.back());
-  //    for (auto idx : indices) {
-  //      search_groups.push_back(available_groups[idx]);
-  //    }
-  //  }
-  //  int best_gid = -1;
-  //  int best_conflict_cnt = total_sample_cnt + 1;
-  //  for (auto gid : search_groups) {
-  //    int rest_max_cnt = total_sample_cnt;
-  //    if (forced_single_val_group[gid]) {
-  //      rest_max_cnt = std::min(rest_max_cnt, single_val_max_conflict_cnt - group_total_data_cnt[gid] + group_used_row_cnt[gid]);
-  //    } 
-  //    const int cnt = is_filtered_feature ? 0 : GetConfilctCount(conflict_marks[gid], sample_indices[fidx], num_per_col[fidx], rest_max_cnt, max_concurrent_feature_per_group);
-  //    if (cnt < 0) {
-  //      continue;
-  //    }
-  //    if (cnt < best_conflict_cnt || (cnt == best_conflict_cnt && (forced_single_val_group[gid] || group_total_data_cnt[best_gid] > group_total_data_cnt[gid]))) {
-  //      best_conflict_cnt = cnt;
-  //      best_gid = gid;
-  //    }
-  //    if (cnt == 0 && forced_single_val_group[gid]) { break; }
-  //  }
-  //  if (best_gid >= 0) {
-  //    features_in_group[best_gid].push_back(fidx);
-  //    group_total_data_cnt[best_gid] += cur_non_zero_cnt;
-  //    group_used_row_cnt[best_gid] += cur_non_zero_cnt - best_conflict_cnt;
-  //    if (!is_filtered_feature) {
-  //      MarkUsed(&conflict_marks[best_gid], sample_indices[fidx], num_per_col[fidx]);
-  //    }
-  //    group_num_bin[best_gid] += bin_mappers[fidx]->num_bin() + (bin_mappers[fidx]->GetDefaultBin() == 0 ? -1 : 0);
-  //    if (!multi_val_group->at(best_gid) && group_total_data_cnt[best_gid] - group_used_row_cnt[best_gid] > single_val_max_conflict_cnt) {
-  //      multi_val_group->at(best_gid) = true;
-  //    }
-  //  } else {
-  //    forced_single_val_group.push_back(false);
-  //    features_in_group.emplace_back();
-  //    features_in_group.back().push_back(fidx);
-  //    conflict_marks.emplace_back(total_sample_cnt, 0);
-  //    if (!is_filtered_feature) {
-  //      MarkUsed(&(conflict_marks.back()), sample_indices[fidx], num_per_col[fidx]);
-  //    }
-  //    group_total_data_cnt.emplace_back(cur_non_zero_cnt);
-  //    group_used_row_cnt.emplace_back(cur_non_zero_cnt);
-  //    group_num_bin.push_back(1 + bin_mappers[fidx]->num_bin() + (bin_mappers[fidx]->GetDefaultBin() == 0 ? -1 : 0));
-  //    multi_val_group->push_back(false);
-  //  }
-  //}
   return features_in_group;
 }
 
@@ -328,11 +239,6 @@ std::vector<std::vector<int>> FastFeatureBundling(const std::vector<std::unique_
                                                   data_size_t num_data,
                                                   bool is_use_gpu,
                                                   std::vector<bool>* multi_val_group) {
-  multi_val_group->clear();
-  multi_val_group->push_back(true);
-  std::vector<std::vector<int>> ret;
-  ret.push_back(used_features);
-  return ret;
   std::vector<size_t> feature_non_zero_cnt;
   feature_non_zero_cnt.reserve(used_features.size());
   // put dense feature first

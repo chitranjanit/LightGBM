@@ -172,9 +172,14 @@ class FeatureGroup {
   inline void FinishLoad() {
     bin_data_->FinishLoad();
     if (is_multi_val_) {
-      for (auto& bin : raw_bin_data_) {
-        bin->FinishLoad();
+      OMP_INIT_EX();
+      #pragma omp parallel for schedule(guided)
+      for (int i = 0; i < num_feature_; ++i) {
+        OMP_LOOP_EX_BEGIN();
+        raw_bin_data_[i]->FinishLoad();
+        OMP_LOOP_EX_END();
       }
+      OMP_THROW_EX();
     }
   }
 
@@ -199,7 +204,7 @@ class FeatureGroup {
     data_size_t* lte_indices, data_size_t* gt_indices) const {
     uint32_t default_bin = bin_mappers_[sub_feature]->GetDefaultBin();
     uint32_t most_freq_bin = bin_mappers_[sub_feature]->GetMostFreqBin();
-    if (true) {
+    if (!is_multi_val_) {
       uint32_t min_bin = bin_offsets_[sub_feature];
       uint32_t max_bin = bin_offsets_[sub_feature + 1] - 1;
       if (bin_mappers_[sub_feature]->bin_type() == BinType::NumericalBin) {
