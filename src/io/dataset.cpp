@@ -1106,15 +1106,15 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
               data_indices,
               start,
               end,
-              ptr_ordered_grad,
-              ptr_ordered_hess,
+              gradients,
+              hessians,
               data_ptr);
           } else {
             feature_groups_[group]->bin_data_->ConstructHistogram(
               data_indices,
               start,
               end,
-              ptr_ordered_grad,
+              gradients,
               data_ptr);
           }
         } else {
@@ -1122,14 +1122,14 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
             feature_groups_[group]->bin_data_->ConstructHistogram(
               start,
               end,
-              ptr_ordered_grad,
-              ptr_ordered_hess,
+              gradients,
+              hessians,
               data_ptr);
           } else {
             feature_groups_[group]->bin_data_->ConstructHistogram(
               start,
               end,
-              ptr_ordered_grad,
+              gradients,
               data_ptr);
           }
         }

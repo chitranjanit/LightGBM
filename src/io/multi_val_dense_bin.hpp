@@ -85,13 +85,13 @@ public:
     for (data_size_t i = start; i < end; ++i) {
       if (prefetch_size + i < end) {
         PREFETCH_T0(row_ptr_.data() + data_indices[i + prefetch_size]);
-        PREFETCH_T0(ordered_gradients + i + prefetch_size);
-        PREFETCH_T0(ordered_hessians + i + prefetch_size);
-        //PREFETCH_T0(data_.data() + row_ptr_[data_indices[i + prefetch_size]]);
+        PREFETCH_T0(ordered_gradients + data_indices[i + prefetch_size]);
+        PREFETCH_T0(ordered_hessians + data_indices[i + prefetch_size]);
+        PREFETCH_T0(data_.data() + row_ptr_[data_indices[i + prefetch_size]]);
       }
       for (data_size_t idx = RowPtr(data_indices[i]); idx < RowPtr(data_indices[i] + 1); ++idx) {
         const VAL_T bin = data_[idx];
-        ACC_GH(out, bin, ordered_gradients[i], ordered_hessians[i]);
+        ACC_GH(out, bin, ordered_gradients[data_indices[i]], ordered_hessians[data_indices[i]]);
       }
     }
   }
@@ -105,7 +105,7 @@ public:
         PREFETCH_T0(row_ptr_.data() + i + prefetch_size);
         PREFETCH_T0(ordered_gradients + i + prefetch_size);
         PREFETCH_T0(ordered_hessians + i + prefetch_size);
-        //PREFETCH_T0(data_.data() + row_ptr_[i + prefetch_size]);
+        PREFETCH_T0(data_.data() + row_ptr_[i + prefetch_size]);
       }
       for (data_size_t idx = RowPtr(i); idx < RowPtr(i + 1); ++idx) {
         const VAL_T bin = data_[idx];
@@ -121,12 +121,12 @@ public:
     for (data_size_t i = start; i < end; ++i) {
       if (prefetch_size + i < end) {
         PREFETCH_T0(row_ptr_.data() + data_indices[i + prefetch_size]);
-        PREFETCH_T0(ordered_gradients + i + prefetch_size);
-        //PREFETCH_T0(data_.data() +  row_ptr_[data_indices[i + prefetch_size]]);
+        PREFETCH_T0(ordered_gradients + data_indices[i + prefetch_size]);
+        PREFETCH_T0(data_.data() +  row_ptr_[data_indices[i + prefetch_size]]);
       }
       for (data_size_t idx = RowPtr(data_indices[i]); idx < RowPtr(data_indices[i] + 1); ++idx) {
         const VAL_T bin = data_[idx];
-        ACC_GH(out, bin, ordered_gradients[i], 1.0f);
+        ACC_GH(out, bin, ordered_gradients[data_indices[i]], 1.0f);
       }
     }
   }
@@ -139,7 +139,7 @@ public:
       if (prefetch_size + i < end) {
         PREFETCH_T0(row_ptr_.data() + i + prefetch_size);
         PREFETCH_T0(ordered_gradients + i + prefetch_size);
-        //PREFETCH_T0(data_.data() + row_ptr_[i + prefetch_size]);
+        PREFETCH_T0(data_.data() + row_ptr_[i + prefetch_size]);
       }
       for (data_size_t idx = RowPtr(i); idx < RowPtr(i + 1); ++idx) {
         const VAL_T bin = data_[idx];
