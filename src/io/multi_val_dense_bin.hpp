@@ -10,6 +10,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <omp.h>
 #include <vector>
 
 namespace LightGBM {
@@ -21,8 +22,7 @@ public:
 
   explicit MultiValDenseBin(data_size_t num_data, int num_bin)
     : num_data_(num_data), num_bin_(num_bin) {
-    row_ptr_.resize(1, 0);
-    data_.clear();
+    t_data_.resize(num_data_);
   }
 
   ~MultiValDenseBin() {
@@ -38,11 +38,25 @@ public:
 
 
   void PushOneRow(data_size_t idx, const std::vector<uint32_t>& values) override {
-    CHECK(row_ptr_.size() == static_cast<size_t>(idx + 1));
-    row_ptr_.push_back(row_ptr_.back() + static_cast<data_size_t>(values.size()));
-    for (const auto val : values) {
-      data_.push_back(val);
+    t_data_[idx].resize(values.size());
+    for (size_t i = 0; i < values.size(); ++i) {
+      t_data_[idx][i] = values[i];
     }
+  }
+
+  void FinishLoad() override {
+    row_ptr_.resize(num_data_ + 1, 0);
+    data_.clear();
+    for (size_t i = 0; i < num_data_; ++i) {
+      data_size_t cnt_feat = static_cast<data_size_t>(t_data_[i].size());
+      for (int j = 0; j < cnt_feat; ++j) {
+        data_.push_back(t_data_[i][j]);
+      }
+      row_ptr_[i + 1] = row_ptr_[i] + cnt_feat;
+    }
+    row_ptr_.shrink_to_fit();
+    data_.shrink_to_fit();
+    t_data_.shrink_to_fit();
   }
 
   void ReSize(data_size_t num_data) override {
@@ -127,12 +141,6 @@ public:
   }
   #undef ACC_GH
 
-  void FinishLoad() override {
-    CHECK(row_ptr_.size() == static_cast<size_t>(num_data_ + 1));
-    row_ptr_.shrink_to_fit();
-    data_.shrink_to_fit();
-  }
-
   void CopySubset(const Bin* full_bin, const data_size_t* used_indices, data_size_t num_used_indices) override {
     auto other_bin = dynamic_cast<const MultiValDenseBin<VAL_T>*>(full_bin);
     row_ptr_.resize(num_data_ + 1, 0);
@@ -156,6 +164,7 @@ private:
   int num_bin_;
   std::vector<VAL_T, Common::AlignmentAllocator<VAL_T, 32>> data_;
   std::vector<data_size_t, Common::AlignmentAllocator<data_size_t, 32>> row_ptr_;
+  std::vector<std::vector<VAL_T>> t_data_;
 
   MultiValDenseBin<VAL_T>(const MultiValDenseBin<VAL_T>& other)
     : num_data_(other.num_data_), data_(other.data_), row_ptr_(other.row_ptr_){

@@ -520,20 +520,30 @@ MultiValBin* Dataset::GetMultiBinFromSparseFeatures() const {
   }
   const auto& offsets = feature_groups_[multi_group_id]->bin_offsets_;
   const int num_feature = feature_groups_[multi_group_id]->num_feature_;
-  std::vector<std::unique_ptr<BinIterator>> iters;
+  int num_threads = 1;
+  #pragma omp parallel
+  #pragma omp master
+  {
+    num_threads = omp_get_num_threads();
+  }
+  std::vector<std::vector<std::unique_ptr<BinIterator>>> iters(num_threads);
   std::vector<uint32_t> most_freq_bins;
   for (int i = 0; i < num_feature; ++i) {
-    iters.emplace_back(feature_groups_[multi_group_id]->SubFeatureIterator(i));
+    for (int tid = 0; tid < num_threads; ++tid) {
+      iters[tid].emplace_back(feature_groups_[multi_group_id]->SubFeatureIterator(i));
+    }
     most_freq_bins.push_back(feature_groups_[multi_group_id]->bin_mappers_[i]->GetMostFreqBin());
   }
 
   std::unique_ptr<MultiValBin> ret;
   ret.reset(MultiValBin::CreateMultiValBin(num_data_, offsets.back()));
   std::vector<uint32_t> cur_data;
+  #pragma omp parallel for schedule(static) firstprivate(cur_data)
   for (int i = 0; i < num_data_; ++i) {
+    int tid = omp_get_thread_num();
     cur_data.clear();
     for (int j = 0; j < num_feature; ++j) {
-      auto cur_bin = iters[j]->Get(i);
+      auto cur_bin = iters[tid][j]->Get(i);
       if (cur_bin == most_freq_bins[j]) {
         continue;
       }
@@ -550,8 +560,14 @@ MultiValBin* Dataset::GetMultiBinFromSparseFeatures() const {
 }
 
 MultiValBin* Dataset::GetMultiBinFromAllFeatures() const {
+  int num_threads = 1;
+  #pragma omp parallel
+  #pragma omp master
+  {
+    num_threads = omp_get_num_threads();
+  }
   std::vector<int> offsets;
-  std::vector<std::unique_ptr<BinIterator>> iters;
+  std::vector<std::vector<std::unique_ptr<BinIterator>>> iters(num_threads);
   std::vector<uint32_t> most_freq_bins;
   int num_total_bin = 1;
   offsets.push_back(num_total_bin);
@@ -564,16 +580,20 @@ MultiValBin* Dataset::GetMultiBinFromAllFeatures() const {
         num_total_bin -= 1;
       }
       offsets.push_back(num_total_bin);
-      iters.emplace_back(feature_groups_[gid]->SubFeatureIterator(fid));
+      for (int tid = 0; tid < num_threads; ++tid) {
+        iters[tid].emplace_back(feature_groups_[gid]->SubFeatureIterator(fid));
+      }
     }
   }
   std::unique_ptr<MultiValBin> ret;
   ret.reset(MultiValBin::CreateMultiValBin(num_data_, offsets.back()));
   std::vector<uint32_t> cur_data;
+  #pragma omp parallel for schedule(static) firstprivate(cur_data)
   for (int i = 0; i < num_data_; ++i) {
+    int tid = omp_get_thread_num();
     cur_data.clear();
     for (int j = 0; j < num_features_; ++j) {
-      auto cur_bin = iters[j]->Get(i);
+      auto cur_bin = iters[tid][j]->Get(i);
       if (cur_bin == most_freq_bins[j]) {
         continue;
       }
