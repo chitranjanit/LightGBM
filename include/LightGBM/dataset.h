@@ -620,7 +620,7 @@ class Dataset {
   /*! \brief Disable copy */
   Dataset(const Dataset&) = delete;
 
-  void addFeaturesFrom(Dataset* other);
+  void AddFeaturesFrom(Dataset* other);
 
  private:
   std::string data_filename_;

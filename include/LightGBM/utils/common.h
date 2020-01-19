@@ -11,6 +11,7 @@
 #include <limits>
 #include <string>
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -20,6 +21,7 @@
 #include <memory>
 #include <sstream>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -1012,7 +1014,60 @@ public:
   }
 };
 
+class Timer {
+ public:
+  Timer() {}
+  ~Timer() {
+    Print();
+  }
+  #ifdef TIMETAG
+  void Start(const std::string& name) {
+    auto cur_time = std::chrono::steady_clock::now();
+    start_time_[name] = cur_time;
+  }
+  void Stop(const std::string& name) {
+    if (stats_.find(name) == stats_.end()) {
+      stats_[name] = std::chrono::duration<double, std::milli>(0);
+    }
+    stats_[name] += std::chrono::steady_clock::now() - start_time_[name];
+  }
+  #else
+  void Start(const std::string&) { }
+  void Stop(const std::string&) { }
+  #endif // TIMETAG
+
+  void Print() const {
+    #ifdef  TIMETAG
+    for (auto it = stats_.begin(); it != stats_.end(); ++it) {
+      Log::Debug("%s costs: %f seconds.", it->first.c_str(), it->second * 1e-3);
+    }
+    #endif
+  }
+ private:
+  std::unordered_map<std::string, std::chrono::steady_clock::time_point> start_time_;
+  std::unordered_map<std::string, std::chrono::duration<double, std::milli>> stats_;
+};
+
+class FunctionTimer {
+ public:
+  FunctionTimer(const std::string& name, Timer& timer): timer_(timer) {
+    timer.Start(name);
+    #ifdef TIMETAG
+    name_ = name;
+    #endif // TIMETAG
+
+  }
+  ~FunctionTimer() {
+    timer_.Stop(name_);
+  }
+ private:
+  std::string name_;
+  Timer& timer_;
+};
+
 }  // namespace Common
+
+extern Common::Timer global_timer;
 
 }  // namespace LightGBM
 

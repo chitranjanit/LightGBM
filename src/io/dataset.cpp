@@ -25,15 +25,6 @@
 
 namespace LightGBM {
 
-
-#ifdef TIMETAG
-std::chrono::duration<double, std::milli> dense_bin_time;
-std::chrono::duration<double, std::milli> sparse_bin_time;
-std::chrono::duration<double, std::milli> sparse_hist_prep_time;
-std::chrono::duration<double, std::milli> sparse_hist_reset_time;
-std::chrono::duration<double, std::milli> sparse_hist_merge_time;
-#endif  // TIMETAG
-
 const char* Dataset::binary_file_token = "______LightGBM_Binary_File_Token______\n";
 
 Dataset::Dataset() {
@@ -52,13 +43,7 @@ Dataset::Dataset(data_size_t num_data) {
 }
 
 Dataset::~Dataset() {
-  #ifdef TIMETAG
-  Log::Info("Dataset::dense_bin_time costs %f", dense_bin_time * 1e-3);
-  Log::Info("Dataset::sparse_bin_time costs %f", sparse_bin_time * 1e-3);
-  Log::Info("Dataset::sparse_hist_prep_time costs %f", sparse_hist_prep_time * 1e-3);
-  Log::Info("Dataset::sparse_hist_reset_time costs %f", sparse_hist_reset_time * 1e-3);
-  Log::Info("Dataset::sparse_hist_merge_time costs %f", sparse_hist_merge_time * 1e-3);
-  #endif
+
 }
 
 std::vector<std::vector<int>> NoGroup(
@@ -240,6 +225,7 @@ std::vector<std::vector<int>> FastFeatureBundling(const std::vector<std::unique_
                                                   data_size_t num_data,
                                                   bool is_use_gpu,
                                                   std::vector<bool>* multi_val_group) {
+  Common::FunctionTimer fun_global_timer("FastFeatureBundling", global_timer);
   std::vector<size_t> feature_non_zero_cnt;
   feature_non_zero_cnt.reserve(used_features.size());
   // put dense feature first
@@ -505,6 +491,7 @@ void Dataset::FinishLoad() {
 }
 
 MultiValBin* Dataset::GetMultiBinFromSparseFeatures() const {
+  Common::FunctionTimer fun_time("GetMultiBinFromSparseFeatures", global_timer);
   int multi_group_id = -1;
   for (int i = 0; i < num_groups_; ++i) {
     if (feature_groups_[i]->is_multi_val_) {
@@ -560,6 +547,7 @@ MultiValBin* Dataset::GetMultiBinFromSparseFeatures() const {
 }
 
 MultiValBin* Dataset::GetMultiBinFromAllFeatures() const {
+  Common::FunctionTimer fun_time("GetMultiBinFromAllFeatures", global_timer);
   int num_threads = 1;
   #pragma omp parallel
   #pragma omp master
@@ -611,6 +599,7 @@ MultiValBin* Dataset::GetMultiBinFromAllFeatures() const {
 
 MultiValBin* Dataset::TestMultiThreadingMethod(score_t* gradients, score_t* hessians, const std::vector<int8_t>& is_feature_used, bool is_constant_hessian,
   bool force_colwise, bool force_rowwise, bool* is_hist_col_wise) const {
+  Common::FunctionTimer fun_global_timer("TestMultiThreadingMethod", global_timer);
   if (force_colwise && force_rowwise) {
     Log::Fatal("cannot set both `force_col_wise` and `force_row_wise` to `true`.");
   }
@@ -1051,6 +1040,7 @@ void Dataset::ConstructHistogramsMultiVal(const MultiValBin* multi_val_bin, cons
                                           const score_t* gradients, const score_t* hessians,
                                           bool is_constant_hessian,
                                           hist_t* hist_data) const {
+  Common::FunctionTimer fun_time("ConstructHistogramsMultiVal", global_timer);
   if (multi_val_bin == nullptr) { return; }
   int num_threads = 1;
   #pragma omp parallel
@@ -1059,19 +1049,14 @@ void Dataset::ConstructHistogramsMultiVal(const MultiValBin* multi_val_bin, cons
     num_threads = omp_get_num_threads();
   }
 
-  #ifdef TIMETAG
-  auto start_time = std::chrono::steady_clock::now();
-  #endif
+  global_timer.Start("sparse_bin_histogram");
   const int num_bin = multi_val_bin->num_bin();
   const int num_bin_aligned = (num_bin + kAlignedSize - 1) / kAlignedSize * kAlignedSize;
   if (hist_buf_.size() < 2 * num_bin_aligned * (num_threads - 1)) {
     hist_buf_.resize(2 * num_bin_aligned * (num_threads - 1));
     Log::Debug("number of buffered bin %d, aligned to %d", num_bin, num_bin_aligned);
   }
-  #ifdef TIMETAG
-  sparse_hist_prep_time += std::chrono::steady_clock::now() - start_time;
-  start_time = std::chrono::steady_clock::now();
-  #endif
+
   const int min_row_size = 1024;
   const int n_part = std::min(num_threads, (num_data + min_row_size - 1) / min_row_size);
   const int step = (num_data + n_part - 1) / n_part;
@@ -1100,10 +1085,9 @@ void Dataset::ConstructHistogramsMultiVal(const MultiValBin* multi_val_bin, cons
       }
     }
   }
-  #ifdef TIMETAG
-  sparse_bin_time += std::chrono::steady_clock::now() - start_time;
-  start_time = std::chrono::steady_clock::now();
-  #endif
+  global_timer.Stop("sparse_bin_histogram");
+
+  global_timer.Start("sparse_bin_histogram_merge");
   const int min_block_size = 512;
   const int n_hist_merge_block = (num_bin + min_block_size - 1) / min_block_size;
   if (!is_constant_hessian) {
@@ -1144,9 +1128,7 @@ void Dataset::ConstructHistogramsMultiVal(const MultiValBin* multi_val_bin, cons
       }
     }
   }
-  #ifdef TIMETAG
-  sparse_hist_merge_time += std::chrono::steady_clock::now() - start_time;
-  #endif
+  global_timer.Stop("sparse_bin_histogram_merge");
 }
 
 void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
@@ -1156,13 +1138,14 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
                                   bool is_constant_hessian,
                                   const MultiValBin* multi_val_bin, bool is_colwise,
                                   hist_t* hist_data) const {
+  Common::FunctionTimer("ConstructHistograms", global_timer);
   if (num_data < 0 || hist_data == nullptr) {
     return;
   }
   if (!is_colwise) {
     return ConstructHistogramsMultiVal(multi_val_bin, data_indices, num_data, gradients, hessians, is_constant_hessian, hist_data);
   }
-
+  global_timer.Start("Get used group");
   std::vector<int> used_dense_group;
   int multi_val_groud_id = -1;
   used_dense_group.reserve(num_groups_);
@@ -1185,12 +1168,10 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
     }
   }
   int num_used_dense_group = static_cast<int>(used_dense_group.size());
-
+  global_timer.Stop("Get used group");
+  global_timer.Start("dense_bin_histogram");
   auto ptr_ordered_grad = gradients;
   auto ptr_ordered_hess = hessians;
-  #ifdef TIMETAG
-  auto start_time = std::chrono::steady_clock::now();
-  #endif
   if (data_indices != nullptr && num_data < num_data_) {
     if (!is_constant_hessian) {
       #pragma omp parallel for schedule(static)
@@ -1299,9 +1280,7 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
       OMP_THROW_EX();
     }
   }
-  #ifdef TIMETAG
-  dense_bin_time  += std::chrono::steady_clock::now() - start_time;
-  #endif
+  global_timer.Stop("dense_bin_histogram");
   if (multi_val_groud_id >= 0) {
     ConstructHistogramsMultiVal(multi_val_bin, data_indices, num_data, gradients, hessians, is_constant_hessian,
                                 hist_data + group_bin_boundaries_aligned_[multi_val_groud_id] * 2);
@@ -1358,7 +1337,7 @@ void PushClearIfEmpty(std::vector<T>* dest, const size_t dest_len, const std::ve
   }
 }
 
-void Dataset::addFeaturesFrom(Dataset* other) {
+void Dataset::AddFeaturesFrom(Dataset* other) {
   if (other->num_data_ != num_data_) {
     throw std::runtime_error("Cannot add features from other Dataset with a different number of rows");
   }

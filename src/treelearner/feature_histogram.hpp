@@ -74,6 +74,7 @@ public:
   * \param other The histogram that want to subtract
   */
   void Subtract(const FeatureHistogram& other) {
+    Common::FunctionTimer fun_timer("FeatureHistogram::Subtract", global_timer);
     for (int i = 0; i < (meta_->num_bin - meta_->offset) * 2; ++i) {
       data_[i] -= other.data_[i];
     }
@@ -81,6 +82,7 @@ public:
 
   void FindBestThreshold(double sum_gradient, double sum_hessian, data_size_t num_data, double min_constraint, double max_constraint,
     SplitInfo* output) {
+    Common::FunctionTimer fun_timer("FeatureHistogram::FindBestThreshold", global_timer);
     output->default_left = true;
     output->gain = kMinScore;
     find_best_threshold_fun_(sum_gradient, sum_hessian + 2 * kEpsilon, num_data, min_constraint, max_constraint, output);
@@ -743,7 +745,7 @@ public:
       pool_.resize(cache_size);
       data_.resize(cache_size);
     }
-    int num_total_bin = train_data->NumTotalBinAligned();
+    int num_total_bin = static_cast<int>(train_data->NumTotalBinAligned());
 
     std::vector<int> offsets;
     if (is_hist_colwise) {
@@ -752,7 +754,7 @@ public:
       for (int j = 0; j < train_data->num_features(); ++j) {
         if (train_data->Feature2Group(j) != last_gid) {
           last_gid = train_data->Feature2Group(j);
-          offset = train_data->GroupBinBoundaryAlign(last_gid);
+          offset = static_cast<int>(train_data->GroupBinBoundaryAlign(last_gid));
         }
         offset += train_data->SubFeatureBinOffset(j);
         offsets.push_back(offset);

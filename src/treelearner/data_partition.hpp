@@ -109,6 +109,7 @@ class DataPartition {
   * \param right_leaf index of right leaf
   */
   void Split(int leaf, const Dataset* dataset, int feature, const uint32_t* threshold, int num_threshold, bool default_left, int right_leaf) {
+    Common::FunctionTimer fun_timer("DataPartition::Split", global_timer);
     const data_size_t min_inner_size = 512;
     // get leaf boundary
     const data_size_t begin = leaf_begin_[leaf];
