@@ -497,16 +497,133 @@ void Dataset::ResetConfig(const char* parameters) {
 void Dataset::FinishLoad() {
   if (is_finish_load_) { return; }
   if (num_groups_ > 0) {
-    OMP_INIT_EX();
-#pragma omp parallel for schedule(guided)
     for (int i = 0; i < num_groups_; ++i) {
-      OMP_LOOP_EX_BEGIN();
       feature_groups_[i]->FinishLoad();
-      OMP_LOOP_EX_END();
     }
-    OMP_THROW_EX();
   }
   is_finish_load_ = true;
+}
+
+MultiValBin* Dataset::GetMultiBinFromSparseFeatures() const {
+  int multi_group_id = -1;
+  for (int i = 0; i < num_groups_; ++i) {
+    if (feature_groups_[i]->is_multi_val_) {
+      if (multi_group_id < 0) {
+        multi_group_id = i;
+      } else {
+        Log::Fatal("Bug. There should be only one multi-val group.");
+      }
+    }
+  }
+  if (multi_group_id < 0) {
+    return nullptr;
+  }
+  const auto& offsets = feature_groups_[multi_group_id]->bin_offsets_;
+  const int num_feature = feature_groups_[multi_group_id]->num_feature_;
+  std::vector<std::unique_ptr<BinIterator>> iters;
+  std::vector<uint32_t> most_freq_bins;
+  for (int i = 0; i < num_feature; ++i) {
+    iters.emplace_back(feature_groups_[multi_group_id]->SubFeatureIterator(i));
+    most_freq_bins.push_back(feature_groups_[multi_group_id]->bin_mappers_[i]->GetMostFreqBin());
+  }
+
+  std::unique_ptr<MultiValBin> ret;
+  ret.reset(MultiValBin::CreateMultiValBin(num_data_, offsets.back()));
+  std::vector<uint32_t> cur_data;
+  for (int i = 0; i < num_data_; ++i) {
+    cur_data.clear();
+    for (int j = 0; j < num_feature; ++j) {
+      auto cur_bin = iters[j]->Get(i);
+      if (cur_bin == most_freq_bins[j]) {
+        continue;
+      }
+      if (most_freq_bins[j] == 0) {
+        cur_bin -= 1;
+      }
+      cur_bin += offsets[j];
+      cur_data.push_back(cur_bin);
+    }
+    ret->PushOneRow(i, cur_data);
+  }
+  ret->FinishLoad();
+  return ret.release();
+}
+
+MultiValBin* Dataset::GetMultiBinFromAllFeatures() const {
+  std::vector<int> offsets;
+  std::vector<std::unique_ptr<BinIterator>> iters;
+  std::vector<uint32_t> most_freq_bins;
+  int num_total_bin = 1;
+  offsets.push_back(num_total_bin); offsets.push_back(num_total_bin);
+  for (int gid = 0; gid < num_groups_; ++gid) {
+    for (int fid = 0; fid < feature_groups_[gid]->num_feature_; ++fid) {
+      const auto& bin_mapper = feature_groups_[gid]->bin_mappers_[fid];
+      most_freq_bins.push_back(bin_mapper->GetMostFreqBin());
+      num_total_bin += bin_mapper->num_bin();
+      if (most_freq_bins.back() == 0) {
+        num_total_bin -= 1;
+      }
+      offsets.push_back(num_total_bin);
+      iters.emplace_back(feature_groups_[gid]->SubFeatureIterator(fid));
+    }
+  }
+  std::unique_ptr<MultiValBin> ret;
+  ret.reset(MultiValBin::CreateMultiValBin(num_data_, offsets.back()));
+  std::vector<uint32_t> cur_data;
+  for (int i = 0; i < num_data_; ++i) {
+    cur_data.clear();
+    for (int j = 0; j < num_features_; ++j) {
+      auto cur_bin = iters[j]->Get(i);
+      if (cur_bin == most_freq_bins[j]) {
+        continue;
+      }
+      if (most_freq_bins[j] == 0) {
+        cur_bin -= 1;
+      }
+      cur_bin += offsets[j];
+      cur_data.push_back(cur_bin);
+    }
+    ret->PushOneRow(i, cur_data);
+  }
+  ret->FinishLoad();
+  return ret.release();
+}
+
+MultiValBin* Dataset::TestMultiThreadingMethod(score_t* gradients, score_t* hessians, const std::vector<int8_t>& is_feature_used, bool is_constant_hessian,
+  bool force_colwise, bool force_rowwise, bool* is_hist_col_wise) const {
+  if (force_colwise && force_rowwise) {
+    Log::Fatal("cannot set both `is_force_col_wise` and `is_force_row_wise` to `true`.");
+  }
+  CHECK(num_groups_ > 0);
+  if (force_colwise) {
+    *is_hist_col_wise = true;
+    return GetMultiBinFromSparseFeatures();
+  } else if (force_rowwise) {
+    *is_hist_col_wise = false;
+    return GetMultiBinFromAllFeatures();
+  } else {
+    std::unique_ptr<MultiValBin> sparse_bin;
+    std::unique_ptr<MultiValBin> all_bin;
+    sparse_bin.reset(GetMultiBinFromSparseFeatures());
+    all_bin.reset(GetMultiBinFromAllFeatures());
+    std::vector<hist_t> hist_data(NumTotalBinAligned() * 2);
+    std::chrono::duration<double, std::milli> col_wise_time, row_wise_time;
+    auto start_time = std::chrono::steady_clock::now();
+    ConstructHistograms(is_feature_used, nullptr, num_data_, gradients, hessians, gradients, hessians, is_constant_hessian, sparse_bin.get(), true, hist_data.data());
+    col_wise_time = std::chrono::steady_clock::now() - start_time;
+    start_time = std::chrono::steady_clock::now();
+    ConstructHistograms(is_feature_used, nullptr, num_data_, gradients, hessians, gradients, hessians, is_constant_hessian, all_bin.get(), false, hist_data.data());
+    row_wise_time = std::chrono::steady_clock::now() - start_time;
+    Log::Debug("colwise cost %f seconds, rowwise cost %f seconds", col_wise_time * 1e-3, row_wise_time * 1e-3);
+    if (col_wise_time < row_wise_time) {
+      *is_hist_col_wise = true;
+      return sparse_bin.release();
+    } else {
+      *is_hist_col_wise = false;
+      Log::Info("Use row-wise multi-threading, may increase memory usage. If memory is not enough, you can set `is_force_col_wise=true`.");
+      return all_bin.release();
+    }
+  }
 }
 
 void Dataset::CopyFeatureMapperFrom(const Dataset* dataset) {
@@ -557,10 +674,8 @@ void Dataset::CreateValid(const Dataset* dataset) {
     if (bin_mappers.back()->GetDefaultBin() != bin_mappers.back()->GetMostFreqBin()) {
       feature_need_push_zeros_.push_back(i);
     }
-    bool is_sparse = bin_mappers[0]->sparse_rate() > 0.8 ? true : false;
     feature_groups_.emplace_back(new FeatureGroup(&bin_mappers,
-                                                  num_data_,
-                                                  is_sparse));
+                                                  num_data_));
     feature2group_.push_back(i);
     feature2subfeature_.push_back(0);
   }
@@ -912,26 +1027,125 @@ void Dataset::DumpTextFile(const char* text_filename) {
   fclose(file);
 }
 
-void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
-                                  const data_size_t* data_indices, data_size_t num_data,
-                                  int leaf_idx,
-                                  const score_t* gradients, const score_t* hessians,
-                                  score_t* ordered_gradients, score_t* ordered_hessians,
-                                  bool is_constant_hessian,
-                                  hist_t* hist_data) const {
-  if (leaf_idx < 0 || num_data < 0 || hist_data == nullptr) {
-    return;
-  }
+void Dataset::ConstructHistogramsMultiVal(const MultiValBin* multi_val_bin, const data_size_t* data_indices, data_size_t num_data,
+                                          const score_t* gradients, const score_t* hessians,
+                                          bool is_constant_hessian,
+                                          hist_t* hist_data) const {
+  if (multi_val_bin == nullptr) { return; }
   int num_threads = 1;
   #pragma omp parallel
   #pragma omp master
   {
     num_threads = omp_get_num_threads();
   }
+
+  #ifdef TIMETAG
+  auto start_time = std::chrono::steady_clock::now();
+  #endif
+  const int num_bin = multi_val_bin->num_bin();
+  const int num_bin_aligned = (num_bin + kAlignedSize - 1) / kAlignedSize * kAlignedSize;
+  if (hist_buf_.size() < 2 * num_bin_aligned * (num_threads - 1)) {
+    hist_buf_.resize(2 * num_bin_aligned * (num_threads - 1));
+    Log::Info("number of buffered bin %d, aligned to ", num_bin, num_bin_aligned);
+  }
+  #ifdef TIMETAG
+  sparse_hist_prep_time += std::chrono::steady_clock::now() - start_time;
+  start_time = std::chrono::steady_clock::now();
+  #endif
+  const int min_row_size = 1024;
+  const int n_part = std::min(num_threads, (num_data + min_row_size - 1) / min_row_size);
+  const int step = (num_data + n_part - 1) / n_part;
+  auto ori_data_ptr = hist_data;
+
+  #pragma omp parallel for schedule(static)
+  for (int tid = 0; tid < n_part; ++tid) {
+    data_size_t start = tid * step;
+    data_size_t end = std::min(start + step, num_data);
+    auto data_ptr = ori_data_ptr;
+    if (tid > 0) {
+      data_ptr = hist_buf_.data() + num_bin_aligned * 2 * (tid - 1);
+    }
+    std::memset(reinterpret_cast<void*>(data_ptr), 0, num_bin* KHistEntrySize);
+    if (data_indices != nullptr && num_data < num_data_) {
+      if (!is_constant_hessian) {
+        multi_val_bin->ConstructHistogram(data_indices, start, end, gradients, hessians, data_ptr);
+      } else {
+        multi_val_bin->ConstructHistogram(data_indices, start, end, gradients, data_ptr);
+      }
+    } else {
+      if (!is_constant_hessian) {
+        multi_val_bin->ConstructHistogram(start, end, gradients, hessians, data_ptr);
+      } else {
+        multi_val_bin->ConstructHistogram(start, end, gradients, data_ptr);
+      }
+    }
+  }
+  #ifdef TIMETAG
+  sparse_bin_time += std::chrono::steady_clock::now() - start_time;
+  start_time = std::chrono::steady_clock::now();
+  #endif
+  const int min_block_size = 512;
+  const int n_hist_merge_block = (num_bin + min_block_size - 1) / min_block_size;
+  if (!is_constant_hessian) {
+    #pragma omp parallel for schedule(static)
+    for (int t = 0; t < n_hist_merge_block; ++t) {
+      const int start = t * min_block_size;
+      const int end = std::min(start + min_block_size, num_bin);
+      for (int tid = 1; tid < n_part; ++tid) {
+        auto src_ptr = hist_buf_.data() + num_bin_aligned * 2 * (tid - 1);
+        int rest = (end * 2 - start * 2) % 4;
+        int i = start * 2;
+        for (; i < end * 2 - rest; i += 4) {
+          _mm256_store_pd(ori_data_ptr + i, _mm256_add_pd(_mm256_load_pd(ori_data_ptr + i), _mm256_load_pd(src_ptr + i)));
+        }
+        for (; i < end * 2; ++i) {
+          ori_data_ptr[i] += src_ptr[i];
+        }
+      }
+    }
+  } else {
+    #pragma omp parallel for schedule(static)
+    for (int t = 0; t < n_hist_merge_block; ++t) {
+      const int start = t * min_block_size;
+      const int end = std::min(start + min_block_size, num_bin);
+      for (int tid = 1; tid < n_part; ++tid) {
+        auto src_ptr = hist_buf_.data() + num_bin_aligned * 2 * (tid - 1);
+        int rest = (end * 2 - start * 2) % 4;
+        int i = start * 2;
+        for (; i < end * 2 - rest; i += 4) {
+          _mm256_store_pd(ori_data_ptr + i, _mm256_add_pd(_mm256_load_pd(ori_data_ptr + i), _mm256_load_pd(src_ptr + i)));
+        }
+        for (; i < end * 2; ++i) {
+          ori_data_ptr[i] += src_ptr[i];
+        }
+      }
+      for (int i = start; i < end; i++) {
+        GET_HESS(ori_data_ptr, i) = GET_HESS(ori_data_ptr, i) * hessians[0];
+      }
+    }
+  }
+  #ifdef TIMETAG
+  sparse_hist_merge_time += std::chrono::steady_clock::now() - start_time;
+  #endif
+}
+
+void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
+                                  const data_size_t* data_indices, data_size_t num_data,
+                                  const score_t* gradients, const score_t* hessians,
+                                  score_t* ordered_gradients, score_t* ordered_hessians,
+                                  bool is_constant_hessian,
+                                  const MultiValBin* multi_val_bin, bool is_colwise,
+                                  hist_t* hist_data) const {
+  if (num_data < 0 || hist_data == nullptr) {
+    return;
+  }
+  if (!is_colwise) {
+    return ConstructHistogramsMultiVal(multi_val_bin, data_indices, num_data, gradients, hessians, is_constant_hessian, hist_data);
+  }
+
   std::vector<int> used_dense_group;
-  std::vector<int> used_sparse_group;
+  int multi_val_groud_id = -1;
   used_dense_group.reserve(num_groups_);
-  used_sparse_group.reserve(num_groups_);
   for (int group = 0; group < num_groups_; ++group) {
     const int f_cnt = group_feature_cnt_[group];
     bool is_group_used = false;
@@ -944,14 +1158,13 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
     }
     if (is_group_used) {
       if (feature_groups_[group]->is_multi_val_) {
-        used_sparse_group.push_back(group);
+        multi_val_groud_id = group;
       } else {
         used_dense_group.push_back(group);
       }
     }
   }
   int num_used_dense_group = static_cast<int>(used_dense_group.size());
-  int num_used_sparse_group = static_cast<int>(used_sparse_group.size());
 
   auto ptr_ordered_grad = gradients;
   auto ptr_ordered_hess = hessians;
@@ -1069,115 +1282,9 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
   #ifdef TIMETAG
   dense_bin_time  += std::chrono::steady_clock::now() - start_time;
   #endif
-  // for sparse bin
-  if (num_used_sparse_group > 0) {
-    for (int gi = 0; gi < num_used_sparse_group; ++gi) {
-      #ifdef TIMETAG
-      start_time = std::chrono::steady_clock::now();
-      #endif
-      int group = used_sparse_group[gi];
-      const int num_bin = feature_groups_[group]->num_total_bin_;
-      const int num_bin_aligned = (num_bin + 31) / 32 * 32;
-      if (hist_buf_.size() < 2 * num_bin_aligned * (num_threads -1 )) {
-        hist_buf_.resize(2 * num_bin_aligned * (num_threads - 1));
-        Log::Info("number of buffered bin %d, aligned to ", num_bin, num_bin_aligned);
-      }
-      #ifdef TIMETAG
-      sparse_hist_prep_time += std::chrono::steady_clock::now() - start_time;
-      start_time = std::chrono::steady_clock::now();
-      #endif
-      const int min_row_size = 512;
-      const int n_part = std::min(num_threads, (num_data + min_row_size - 1) / min_row_size);
-      const int step = (num_data + n_part - 1) / n_part;
-      auto ori_data_ptr = hist_data + group_bin_boundaries_aligned_[group] * 2;
-      
-      #pragma omp parallel for schedule(static)
-      for (int tid = 0; tid < n_part; ++tid) {
-        data_size_t start = tid * step;
-        data_size_t end = std::min(start + step, num_data);
-        auto data_ptr = ori_data_ptr;
-        if (tid > 0) {
-          data_ptr = hist_buf_.data() + num_bin_aligned * 2 * (tid - 1);
-        }
-        std::memset(reinterpret_cast<void*>(data_ptr), 0, num_bin* KHistEntrySize);
-        if (data_indices != nullptr && num_data < num_data_) {
-          if (!is_constant_hessian) {
-            feature_groups_[group]->bin_data_->ConstructHistogram(
-              data_indices,
-              start,
-              end,
-              gradients,
-              hessians,
-              data_ptr);
-          } else {
-            feature_groups_[group]->bin_data_->ConstructHistogram(
-              data_indices,
-              start,
-              end,
-              gradients,
-              data_ptr);
-          }
-        } else {
-          if (!is_constant_hessian) {
-            feature_groups_[group]->bin_data_->ConstructHistogram(
-              start,
-              end,
-              gradients,
-              hessians,
-              data_ptr);
-          } else {
-            feature_groups_[group]->bin_data_->ConstructHistogram(
-              start,
-              end,
-              gradients,
-              data_ptr);
-          }
-        }
-      }
-      #ifdef TIMETAG
-      sparse_bin_time += std::chrono::steady_clock::now() - start_time;
-      start_time = std::chrono::steady_clock::now();
-      #endif
-      // don't merge bin 0
-      const int min_block_size = 512;
-      const int n_block = (num_bin + min_block_size - 1) / min_block_size;
-      if (!is_constant_hessian) {
-        #pragma omp parallel for schedule(static)
-        for (int t = 0; t < n_block; ++t) {
-          const int start = t * min_block_size;
-          const int end = std::min(start + min_block_size, num_bin);
-          for (int tid = 1; tid < n_part; ++tid) {
-            auto src_ptr = hist_buf_.data() + num_bin_aligned * 2 * (tid - 1);
-            int rest = (end * 2 - start * 2) % 4;
-            int i = start * 2;
-            for (; i < end * 2 - rest; i += 4) {
-              _mm256_store_pd(ori_data_ptr + i, _mm256_add_pd(_mm256_load_pd(ori_data_ptr + i), _mm256_load_pd(src_ptr + i)));
-            }
-            for (; i < end * 2; ++i) {
-              ori_data_ptr[i] += src_ptr[i];
-            }
-          }
-        }
-      } else {
-        #pragma omp parallel for schedule(static)
-        for (int t = 0; t < n_block; ++t) {
-          const int start = t * min_block_size;
-          const int end = std::min(start + min_block_size, num_bin);
-          for (int tid = 1; tid < n_part; ++tid) {
-            auto src_ptr = hist_buf_.data() + num_bin_aligned * 2 * (tid - 1);
-            for (int i = start * 2; i < end * 2; i++) {
-              ori_data_ptr[i] += src_ptr[i];
-            }
-          }
-          for (int i = start; i < end; i++) {
-            GET_HESS(ori_data_ptr, i) = GET_HESS(ori_data_ptr, i) * hessians[0];
-          }
-        }
-      }
-      #ifdef TIMETAG
-      sparse_hist_merge_time += std::chrono::steady_clock::now() - start_time;
-      #endif
-    }
+  if (multi_val_groud_id >= 0) {
+    ConstructHistogramsMultiVal(multi_val_bin, data_indices, num_data, gradients, hessians, is_constant_hessian,
+                                hist_data + group_bin_boundaries_aligned_[multi_val_groud_id] * 2);
   }
 }
 

@@ -68,7 +68,7 @@ void SerialTreeLearner::Init(const Dataset* train_data, bool is_constant_hessian
   max_cache_size = std::max(2, max_cache_size);
   max_cache_size = std::min(max_cache_size, config_->num_leaves);
 
-  histogram_pool_.DynamicChangeSize(train_data_, config_, max_cache_size, config_->num_leaves);
+  
   // push split information for all leaves
   best_split_per_leaf_.resize(config_->num_leaves);
 
@@ -84,10 +84,25 @@ void SerialTreeLearner::Init(const Dataset* train_data, bool is_constant_hessian
   ordered_gradients_.resize(num_data_);
   ordered_hessians_.resize(num_data_);
 
+  GetMultiValBin(train_data_);
+
+  histogram_pool_.DynamicChangeSize(train_data_, is_hist_colwise_, config_, max_cache_size, config_->num_leaves);
   Log::Info("Number of data points in the train set: %d, number of used features: %d", num_data_, num_features_);
   if (CostEfficientGradientBoosting::IsEnable(config_)) {
     cegb_.reset(new CostEfficientGradientBoosting(this));
     cegb_->Init();
+  }
+}
+
+void SerialTreeLearner::GetMultiValBin(const Dataset* dataset) {
+  auto used_feature = GetUsedFeatures(true);
+  if (multi_val_bin_ == nullptr) {
+    multi_val_bin_.reset(train_data_->TestMultiThreadingMethod(ordered_gradients_.data(), ordered_hessians_.data(), used_feature,
+      is_constant_hessian_, config_->force_col_wise, config_->force_row_wise, &is_hist_colwise_));
+  } else {
+    // cannot change is_hist_col_wise during training
+    multi_val_bin_.reset(train_data_->TestMultiThreadingMethod(ordered_gradients_.data(), ordered_hessians_.data(), used_feature,
+      is_constant_hessian_, is_hist_colwise_, !is_hist_colwise_, &is_hist_colwise_));
   }
 }
 
@@ -102,6 +117,8 @@ void SerialTreeLearner::ResetTrainingData(const Dataset* train_data) {
 
   // initialize data partition
   data_partition_->ResetNumData(num_data_);
+
+  GetMultiValBin(train_data_);
 
   // initialize ordered gradients and hessians
   ordered_gradients_.resize(num_data_);
@@ -129,7 +146,7 @@ void SerialTreeLearner::ResetConfig(const Config* config) {
     // at least need 2 leaves
     max_cache_size = std::max(2, max_cache_size);
     max_cache_size = std::min(max_cache_size, config_->num_leaves);
-    histogram_pool_.DynamicChangeSize(train_data_, config_, max_cache_size, config_->num_leaves);
+    histogram_pool_.DynamicChangeSize(train_data_, is_hist_colwise_, config_, max_cache_size, config_->num_leaves);
 
     // push split information for all leaves
     best_split_per_leaf_.resize(config_->num_leaves);
@@ -392,9 +409,9 @@ void SerialTreeLearner::ConstructHistograms(const std::vector<int8_t>& is_featur
   hist_t* ptr_smaller_leaf_hist_data = smaller_leaf_histogram_array_[0].RawData() - KHistOffset;
   train_data_->ConstructHistograms(is_feature_used,
                                    smaller_leaf_splits_->data_indices(), smaller_leaf_splits_->num_data_in_leaf(),
-                                   smaller_leaf_splits_->LeafIndex(),
                                    gradients_, hessians_,
                                    ordered_gradients_.data(), ordered_hessians_.data(), is_constant_hessian_,
+                                   multi_val_bin_.get(), is_hist_colwise_,
                                    ptr_smaller_leaf_hist_data);
 
   if (larger_leaf_histogram_array_ != nullptr && !use_subtract) {
@@ -402,9 +419,9 @@ void SerialTreeLearner::ConstructHistograms(const std::vector<int8_t>& is_featur
     hist_t* ptr_larger_leaf_hist_data = larger_leaf_histogram_array_[0].RawData() - KHistOffset;
     train_data_->ConstructHistograms(is_feature_used,
                                      larger_leaf_splits_->data_indices(), larger_leaf_splits_->num_data_in_leaf(),
-                                     larger_leaf_splits_->LeafIndex(),
                                      gradients_, hessians_,
                                      ordered_gradients_.data(), ordered_hessians_.data(), is_constant_hessian_,
+                                     multi_val_bin_.get(), is_hist_colwise_,
                                      ptr_larger_leaf_hist_data);
   }
   #ifdef TIMETAG

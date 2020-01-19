@@ -641,15 +641,6 @@ namespace LightGBM {
   template class MultiValDenseBin<uint32_t>;
 
 
-  Bin* Bin::CreateBin(data_size_t num_data, int num_bin, bool is_multi_val) {
-    // sparse threshold
-    if (is_multi_val) {
-      return CreateMultiValDenseBin(num_data, num_bin);
-    } else {
-      return CreateDenseBin(num_data, num_bin);
-    }
-  }
-
   Bin* Bin::CreateDenseBin(data_size_t num_data, int num_bin) {
     if (num_bin <= 16) {
       return new Dense4bitsBin(num_data);
@@ -662,16 +653,6 @@ namespace LightGBM {
     }
   }
 
-  Bin* Bin::CreateMultiValDenseBin(data_size_t num_data, int num_bin) {
-    if (num_bin <= 256) {
-      return new MultiValDenseBin<uint8_t>(num_data);
-    } else if (num_bin <= 65536) {
-      return new MultiValDenseBin<uint16_t>(num_data);
-    } else {
-      return new MultiValDenseBin<uint32_t>(num_data);
-    }
-  }
-
   Bin* Bin::CreateSparseBin(data_size_t num_data, int num_bin) {
     if (num_bin <= 256) {
       return new SparseBin<uint8_t>(num_data);
@@ -679,6 +660,16 @@ namespace LightGBM {
       return new SparseBin<uint16_t>(num_data);
     } else {
       return new SparseBin<uint32_t>(num_data);
+    }
+  }
+
+  MultiValBin* MultiValBin::CreateMultiValBin(data_size_t num_data, int num_bin) {
+    if (num_bin <= 256) {
+      return new MultiValDenseBin<uint8_t>(num_data, num_bin);
+    } else if (num_bin <= 65536) {
+      return new MultiValDenseBin<uint16_t>(num_data, num_bin);
+    } else {
+      return new MultiValDenseBin<uint32_t>(num_data, num_bin);
     }
   }
 

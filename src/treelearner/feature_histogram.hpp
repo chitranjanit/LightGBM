@@ -714,7 +714,7 @@ public:
     }
   }
 
-  void DynamicChangeSize(const Dataset* train_data, const Config* config, int cache_size, int total_size) {
+  void DynamicChangeSize(const Dataset* train_data, bool is_hist_colwise, const Config* config, int cache_size, int total_size) {
     if (feature_metas_.empty()) {
       uint64_t bin_cnt_over_features = 0;
       int num_feature = train_data->num_features();
@@ -736,7 +736,6 @@ public:
       }
       Log::Info("Total Bins %d", bin_cnt_over_features);
     }
-    uint64_t num_total_bin = train_data->NumTotalBinAligned();
     int old_cache_size = static_cast<int>(pool_.size());
     Reset(cache_size, total_size);
 
@@ -744,14 +743,11 @@ public:
       pool_.resize(cache_size);
       data_.resize(cache_size);
     }
+    int num_total_bin = train_data->NumTotalBinAligned();
 
-    OMP_INIT_EX();
-    #pragma omp parallel for schedule(static)
-    for (int i = old_cache_size; i < cache_size; ++i) {
-      OMP_LOOP_EX_BEGIN();
-      pool_[i].reset(new FeatureHistogram[train_data->num_features()]);
-      data_[i].resize(num_total_bin * 2);
-      uint64_t offset = 0;
+    std::vector<int> offsets;
+    if (is_hist_colwise) {
+      int offset = 0;
       int last_gid = -1;
       for (int j = 0; j < train_data->num_features(); ++j) {
         if (train_data->Feature2Group(j) != last_gid) {
@@ -759,12 +755,32 @@ public:
           offset = train_data->GroupBinBoundaryAlign(last_gid);
         }
         offset += static_cast<uint64_t>(train_data->SubFeatureBinOffset(j));
-        pool_[i][j].Init(data_[i].data() + offset * 2, &feature_metas_[j]);
+        offsets.push_back(offset);
         auto num_bin = train_data->FeatureNumBin(j);
         if (train_data->FeatureBinMapper(j)->GetMostFreqBin() == 0) {
           num_bin -= 1;
         }
-        offset += static_cast<uint64_t>(num_bin);
+        offset += num_bin;
+      }
+    } else {
+      num_total_bin = 1;
+      for (int j = 0; j < train_data->num_features(); ++j) {
+        offsets.push_back(num_total_bin);
+        num_total_bin += train_data->FeatureBinMapper(j)->num_bin();
+        if (train_data->FeatureBinMapper(j)->GetMostFreqBin() == 0) {
+          num_total_bin -= 1;
+        }
+      }
+    }
+    OMP_INIT_EX();
+    #pragma omp parallel for schedule(static)
+    for (int i = old_cache_size; i < cache_size; ++i) {
+      OMP_LOOP_EX_BEGIN();
+      pool_[i].reset(new FeatureHistogram[train_data->num_features()]);
+      data_[i].resize(num_total_bin * 2);
+      uint64_t offset = 0;
+      for (int j = 0; j < train_data->num_features(); ++j) {
+        pool_[i][j].Init(data_[i].data() + offsets[j] * 2, &feature_metas_[j]);
       }
       OMP_LOOP_EX_END();
     }

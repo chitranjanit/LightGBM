@@ -80,6 +80,9 @@ class SerialTreeLearner: public TreeLearner {
                        data_size_t total_num_data, const data_size_t* bag_indices, data_size_t bag_cnt) const override;
 
  protected:
+
+  void GetMultiValBin(const Dataset* dataset);
+
   virtual std::vector<int8_t> GetUsedFeatures(bool is_tree_level);
   /*!
   * \brief Some initial works before training
@@ -175,6 +178,8 @@ class SerialTreeLearner: public TreeLearner {
   int num_threads_;
   std::vector<int> ordered_bin_indices_;
   bool is_constant_hessian_;
+  std::unique_ptr<MultiValBin> multi_val_bin_;
+  bool is_hist_colwise_;
   std::unique_ptr<CostEfficientGradientBoosting> cegb_;
 };
 

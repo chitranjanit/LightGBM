@@ -422,27 +422,12 @@ class Bin {
   virtual void FinishLoad() = 0;
 
   /*!
-  * \brief Create object for bin data of one feature, will call CreateDenseBin or CreateSparseBin according to "is_sparse"
-  * \param num_data Total number of data
-  * \param num_bin Number of bin
-  * \param is_multi_val
-  * \param sparse_rate Sparse rate of this bins( num_bin0/num_data )
-  * \param is_enable_sparse True if enable sparse feature
-  * \param sparse_threshold Threshold for treating a feature as a sparse feature
-  * \param is_sparse Will set to true if this bin is sparse
-  * \return The bin data object
-  */
-  static Bin* CreateBin(data_size_t num_data, int num_bin, bool is_multi_val);
-
-  /*!
   * \brief Create object for bin data of one feature, used for dense feature
   * \param num_data Total number of data
   * \param num_bin Number of bin
   * \return The bin data object
   */
   static Bin* CreateDenseBin(data_size_t num_data, int num_bin);
-
-  static Bin* CreateMultiValDenseBin(data_size_t num_data, int num_bin);
 
   /*!
   * \brief Create object for bin data of one feature, used for sparse feature
@@ -456,6 +441,45 @@ class Bin {
   * \brief Deep copy the bin
   */
   virtual Bin* Clone() = 0;
+};
+
+
+
+class MultiValBin {
+public:
+
+  virtual ~MultiValBin() {}
+
+  virtual data_size_t num_data() const = 0;
+
+  virtual int32_t num_bin() const = 0;
+
+  virtual void ReSize(data_size_t num_data) = 0;
+
+  virtual void PushOneRow(data_size_t idx, const std::vector<uint32_t>& values) = 0;
+
+  virtual void CopySubset(const Bin* full_bin, const data_size_t* used_indices, data_size_t num_used_indices) = 0;
+
+  virtual void ConstructHistogram(
+    const data_size_t* data_indices, data_size_t start, data_size_t end,
+    const score_t* gradients, const score_t* hessians,
+    hist_t* out) const = 0;
+
+  virtual void ConstructHistogram(data_size_t start, data_size_t end,
+    const score_t* gradients, const score_t* hessians,
+    hist_t* out) const = 0;
+
+  virtual void ConstructHistogram(const data_size_t* data_indices, data_size_t start, data_size_t end,
+    const score_t* ordered_gradients, hist_t* out) const = 0;
+
+  virtual void ConstructHistogram(data_size_t start, data_size_t end,
+    const score_t* ordered_gradients, hist_t* out) const = 0;
+
+  virtual void FinishLoad() = 0;
+
+  static MultiValBin* CreateMultiValBin(data_size_t num_data, int num_bin);
+
+  virtual MultiValBin* Clone() = 0;
 };
 
 inline uint32_t BinMapper::ValueToBin(double value) const {

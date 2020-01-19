@@ -404,6 +404,13 @@ class Dataset {
 
   void CopySubset(const Dataset* fullset, const data_size_t* used_indices, data_size_t num_used_indices, bool need_meta_data);
 
+  MultiValBin* GetMultiBinFromSparseFeatures() const;
+
+  MultiValBin* GetMultiBinFromAllFeatures() const;
+
+  MultiValBin* TestMultiThreadingMethod(score_t* gradients, score_t* hessians, const std::vector<int8_t>& is_feature_used, bool is_constant_hessian,
+    bool force_colwise, bool force_rowwise, bool* is_hist_col_wise) const;
+
   LIGHTGBM_EXPORT void FinishLoad();
 
   LIGHTGBM_EXPORT bool SetFloatField(const char* field_name, const float* field_data, data_size_t num_element);
@@ -433,11 +440,16 @@ class Dataset {
 
   void ConstructHistograms(const std::vector<int8_t>& is_feature_used,
                            const data_size_t* data_indices, data_size_t num_data,
-                           int leaf_idx,
                            const score_t* gradients, const score_t* hessians,
                            score_t* ordered_gradients, score_t* ordered_hessians,
                            bool is_constant_hessian,
+                           const MultiValBin* multi_val_bin, bool is_colwise,
                            hist_t* histogram_data) const;
+
+  void ConstructHistogramsMultiVal(const MultiValBin* multi_val_bin, const data_size_t* data_indices, data_size_t num_data,
+                                  const score_t* gradients, const score_t* hessians,
+                                  bool is_constant_hessian,
+                                  hist_t* histogram_data) const;
 
   void FixHistogram(int feature_idx, double sum_gradient, double sum_hessian, hist_t* data) const;
 
@@ -650,6 +662,7 @@ class Dataset {
   bool zero_as_missing_;
   std::vector<int> feature_need_push_zeros_;
   mutable std::vector<hist_t, Common::AlignmentAllocator<hist_t, kAlignedSize>> hist_buf_;
+
 };
 
 }  // namespace LightGBM
