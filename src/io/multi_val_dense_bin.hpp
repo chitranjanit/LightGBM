@@ -79,71 +79,71 @@ public:
   hist[ti + 1] += h; \
 
   void ConstructHistogram(const data_size_t* data_indices, data_size_t start, data_size_t end,
-    const score_t* ordered_gradients, const score_t* ordered_hessians,
+    const score_t* gradients, const score_t* hessians,
     hist_t* out) const override {
     const data_size_t prefetch_size = 16;
     for (data_size_t i = start; i < end; ++i) {
       if (prefetch_size + i < end) {
         PREFETCH_T0(row_ptr_.data() + data_indices[i + prefetch_size]);
-        PREFETCH_T0(ordered_gradients + data_indices[i + prefetch_size]);
-        PREFETCH_T0(ordered_hessians + data_indices[i + prefetch_size]);
+        PREFETCH_T0(gradients + data_indices[i + prefetch_size]);
+        PREFETCH_T0(hessians + data_indices[i + prefetch_size]);
         PREFETCH_T0(data_.data() + row_ptr_[data_indices[i + prefetch_size]]);
       }
       for (data_size_t idx = RowPtr(data_indices[i]); idx < RowPtr(data_indices[i] + 1); ++idx) {
         const VAL_T bin = data_[idx];
-        ACC_GH(out, bin, ordered_gradients[data_indices[i]], ordered_hessians[data_indices[i]]);
+        ACC_GH(out, bin, gradients[data_indices[i]], hessians[data_indices[i]]);
       }
     }
   }
 
   void ConstructHistogram(data_size_t start, data_size_t end,
-    const score_t* ordered_gradients, const score_t* ordered_hessians,
+    const score_t* gradients, const score_t* hessians,
     hist_t* out) const override {
     const data_size_t prefetch_size = 16;
     for (data_size_t i = start; i < end; ++i) {
       if (prefetch_size + i < end) {
         PREFETCH_T0(row_ptr_.data() + i + prefetch_size);
-        PREFETCH_T0(ordered_gradients + i + prefetch_size);
-        PREFETCH_T0(ordered_hessians + i + prefetch_size);
+        PREFETCH_T0(gradients + i + prefetch_size);
+        PREFETCH_T0(hessians + i + prefetch_size);
         PREFETCH_T0(data_.data() + row_ptr_[i + prefetch_size]);
       }
       for (data_size_t idx = RowPtr(i); idx < RowPtr(i + 1); ++idx) {
         const VAL_T bin = data_[idx];
-        ACC_GH(out, bin, ordered_gradients[i], ordered_hessians[i]);
+        ACC_GH(out, bin, gradients[i], hessians[i]);
       }
     }
   }
 
   void ConstructHistogram(const data_size_t* data_indices, data_size_t start, data_size_t end,
-    const score_t* ordered_gradients,
+    const score_t* gradients,
     hist_t* out) const override {
     const data_size_t prefetch_size = 16;
     for (data_size_t i = start; i < end; ++i) {
       if (prefetch_size + i < end) {
         PREFETCH_T0(row_ptr_.data() + data_indices[i + prefetch_size]);
-        PREFETCH_T0(ordered_gradients + data_indices[i + prefetch_size]);
+        PREFETCH_T0(gradients + data_indices[i + prefetch_size]);
         PREFETCH_T0(data_.data() +  row_ptr_[data_indices[i + prefetch_size]]);
       }
       for (data_size_t idx = RowPtr(data_indices[i]); idx < RowPtr(data_indices[i] + 1); ++idx) {
         const VAL_T bin = data_[idx];
-        ACC_GH(out, bin, ordered_gradients[data_indices[i]], 1.0f);
+        ACC_GH(out, bin, gradients[data_indices[i]], 1.0f);
       }
     }
   }
 
   void ConstructHistogram(data_size_t start, data_size_t end,
-    const score_t* ordered_gradients,
+    const score_t* gradients,
     hist_t* out) const override {
     const data_size_t prefetch_size = 16;
     for (data_size_t i = start; i < end; ++i) {
       if (prefetch_size + i < end) {
         PREFETCH_T0(row_ptr_.data() + i + prefetch_size);
-        PREFETCH_T0(ordered_gradients + i + prefetch_size);
+        PREFETCH_T0(gradients + i + prefetch_size);
         PREFETCH_T0(data_.data() + row_ptr_[i + prefetch_size]);
       }
       for (data_size_t idx = RowPtr(i); idx < RowPtr(i + 1); ++idx) {
         const VAL_T bin = data_[idx];
-        ACC_GH(out, bin, ordered_gradients[i], 1.0f);
+        ACC_GH(out, bin, gradients[i], 1.0f);
       }
     }
   }
