@@ -554,7 +554,7 @@ MultiValBin* Dataset::GetMultiBinFromAllFeatures() const {
   std::vector<std::unique_ptr<BinIterator>> iters;
   std::vector<uint32_t> most_freq_bins;
   int num_total_bin = 1;
-  offsets.push_back(num_total_bin); offsets.push_back(num_total_bin);
+  offsets.push_back(num_total_bin);
   for (int gid = 0; gid < num_groups_; ++gid) {
     for (int fid = 0; fid < feature_groups_[gid]->num_feature_; ++fid) {
       const auto& bin_mapper = feature_groups_[gid]->bin_mappers_[fid];
@@ -592,7 +592,7 @@ MultiValBin* Dataset::GetMultiBinFromAllFeatures() const {
 MultiValBin* Dataset::TestMultiThreadingMethod(score_t* gradients, score_t* hessians, const std::vector<int8_t>& is_feature_used, bool is_constant_hessian,
   bool force_colwise, bool force_rowwise, bool* is_hist_col_wise) const {
   if (force_colwise && force_rowwise) {
-    Log::Fatal("cannot set both `is_force_col_wise` and `is_force_row_wise` to `true`.");
+    Log::Fatal("cannot set both `force_col_wise` and `force_row_wise` to `true`.");
   }
   CHECK(num_groups_ > 0);
   if (force_colwise) {
@@ -620,7 +620,7 @@ MultiValBin* Dataset::TestMultiThreadingMethod(score_t* gradients, score_t* hess
       return sparse_bin.release();
     } else {
       *is_hist_col_wise = false;
-      Log::Info("Use row-wise multi-threading, may increase memory usage. If memory is not enough, you can set `is_force_col_wise=true`.");
+      Log::Info("Use row-wise multi-threading, may increase memory usage. If memory is not enough, you can set `force_col_wise=true`.");
       return all_bin.release();
     }
   }
