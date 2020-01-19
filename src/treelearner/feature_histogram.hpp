@@ -754,7 +754,7 @@ public:
           last_gid = train_data->Feature2Group(j);
           offset = train_data->GroupBinBoundaryAlign(last_gid);
         }
-        offset += static_cast<uint64_t>(train_data->SubFeatureBinOffset(j));
+        offset += train_data->SubFeatureBinOffset(j);
         offsets.push_back(offset);
         auto num_bin = train_data->FeatureNumBin(j);
         if (train_data->FeatureBinMapper(j)->GetMostFreqBin() == 0) {
@@ -778,7 +778,6 @@ public:
       OMP_LOOP_EX_BEGIN();
       pool_[i].reset(new FeatureHistogram[train_data->num_features()]);
       data_[i].resize(num_total_bin * 2);
-      uint64_t offset = 0;
       for (int j = 0; j < train_data->num_features(); ++j) {
         pool_[i][j].Init(data_[i].data() + offsets[j] * 2, &feature_metas_[j]);
       }

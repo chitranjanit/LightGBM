@@ -38,7 +38,7 @@ public:
 
 
   void PushOneRow(data_size_t idx, const std::vector<uint32_t>& values) override {
-    CHECK(row_ptr_.size() == static_cast<int>(idx + 1));
+    CHECK(row_ptr_.size() == static_cast<size_t>(idx + 1));
     row_ptr_.push_back(row_ptr_.back() + static_cast<data_size_t>(values.size()));
     for (const auto val : values) {
       data_.push_back(val);
