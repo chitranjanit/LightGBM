@@ -97,11 +97,11 @@ void SerialTreeLearner::Init(const Dataset* train_data, bool is_constant_hessian
 void SerialTreeLearner::GetMultiValBin(const Dataset* dataset) {
   auto used_feature = GetUsedFeatures(true);
   if (multi_val_bin_ == nullptr) {
-    multi_val_bin_.reset(train_data_->TestMultiThreadingMethod(ordered_gradients_.data(), ordered_hessians_.data(), used_feature,
+    multi_val_bin_.reset(dataset->TestMultiThreadingMethod(ordered_gradients_.data(), ordered_hessians_.data(), used_feature,
       is_constant_hessian_, config_->force_col_wise, config_->force_row_wise, &is_hist_colwise_));
   } else {
     // cannot change is_hist_col_wise during training
-    multi_val_bin_.reset(train_data_->TestMultiThreadingMethod(ordered_gradients_.data(), ordered_hessians_.data(), used_feature,
+    multi_val_bin_.reset(dataset->TestMultiThreadingMethod(ordered_gradients_.data(), ordered_hessians_.data(), used_feature,
       is_constant_hessian_, is_hist_colwise_, !is_hist_colwise_, &is_hist_colwise_));
   }
 }
