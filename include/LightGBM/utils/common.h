@@ -1039,7 +1039,7 @@ class Timer {
   void Print() const {
     #ifdef  TIMETAG
     for (auto it = stats_.begin(); it != stats_.end(); ++it) {
-      Log::Debug("%s costs: %f seconds.", it->first.c_str(), it->second * 1e-3);
+      Log::Debug("%s costs:\t %f ", it->first.c_str(), it->second * 1e-3);
     }
     #endif
   }
