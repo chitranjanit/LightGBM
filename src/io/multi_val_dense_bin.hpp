@@ -85,6 +85,8 @@ public:
     for (data_size_t i = start; i < end; ++i) {
       if (prefetch_size + i < end) {
         PREFETCH_T0(row_ptr_.data() + data_indices[i + prefetch_size]);
+        PREFETCH_T0(ordered_gradients + i + prefetch_size);
+        PREFETCH_T0(ordered_hessians + i + prefetch_size);
         PREFETCH_T0(data_.data() + row_ptr_[data_indices[i + prefetch_size]]);
       }
       for (data_size_t idx = RowPtr(data_indices[i]); idx < RowPtr(data_indices[i] + 1); ++idx) {
@@ -101,6 +103,8 @@ public:
     for (data_size_t i = start; i < end; ++i) {
       if (prefetch_size + i < end) {
         PREFETCH_T0(row_ptr_.data() + i + prefetch_size);
+        PREFETCH_T0(ordered_gradients + i + prefetch_size);
+        PREFETCH_T0(ordered_hessians + i + prefetch_size);
         PREFETCH_T0(data_.data() + row_ptr_[i + prefetch_size]);
       }
       for (data_size_t idx = RowPtr(i); idx < RowPtr(i + 1); ++idx) {
@@ -117,6 +121,7 @@ public:
     for (data_size_t i = start; i < end; ++i) {
       if (prefetch_size + i < end) {
         PREFETCH_T0(row_ptr_.data() + data_indices[i + prefetch_size]);
+        PREFETCH_T0(ordered_gradients + i + prefetch_size);
         PREFETCH_T0(data_.data() +  row_ptr_[data_indices[i + prefetch_size]]);
       }
       for (data_size_t idx = RowPtr(data_indices[i]); idx < RowPtr(data_indices[i] + 1); ++idx) {
@@ -133,6 +138,7 @@ public:
     for (data_size_t i = start; i < end; ++i) {
       if (prefetch_size + i < end) {
         PREFETCH_T0(row_ptr_.data() + i + prefetch_size);
+        PREFETCH_T0(ordered_gradients + i + prefetch_size);
         PREFETCH_T0(data_.data() + row_ptr_[i + prefetch_size]);
       }
       for (data_size_t idx = RowPtr(i); idx < RowPtr(i + 1); ++idx) {
