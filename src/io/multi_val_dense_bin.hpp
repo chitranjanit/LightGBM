@@ -22,7 +22,17 @@ public:
 
   explicit MultiValDenseBin(data_size_t num_data, int num_bin)
     : num_data_(num_data), num_bin_(num_bin) {
-    t_data_.resize(num_data_);
+    row_ptr_.resize(num_data_ + 1, 0);
+    data_.reserve(num_data_);
+    int num_threads = 1;
+    #pragma omp parallel
+    #pragma omp master
+    {
+      num_threads = omp_get_num_threads();
+    }
+    if (num_threads > 1) {
+      t_data_.resize(num_threads - 1);
+    }
   }
 
   ~MultiValDenseBin() {
@@ -37,25 +47,35 @@ public:
   }
 
 
-  void PushOneRow(data_size_t idx, const std::vector<uint32_t>& values) override {
-    t_data_[idx].resize(values.size());
-    for (size_t i = 0; i < values.size(); ++i) {
-      t_data_[idx][i] = values[i];
+  void PushOneRow(int tid, data_size_t idx, const std::vector<uint32_t>& values) override {
+    row_ptr_[idx + 1] = static_cast<data_size_t>(values.size());
+    if (tid == 0) {
+      for (auto val : values) {
+        data_.push_back(val);
+      }
+    } else {
+      for (auto val : values) {
+        t_data_[tid - 1].push_back(val);
+      }
     }
   }
 
   void FinishLoad() override {
-    row_ptr_.resize(num_data_ + 1, 0);
-    data_.clear();
-    for (size_t i = 0; i < num_data_; ++i) {
-      data_size_t cnt_feat = static_cast<data_size_t>(t_data_[i].size());
-      for (int j = 0; j < cnt_feat; ++j) {
-        data_.push_back(t_data_[i][j]);
+    for (data_size_t i = 0; i < num_data_; ++i) {
+      row_ptr_[i + 1] += row_ptr_[i];
+    }
+    if (t_data_.size() > 0) {
+      size_t offset = data_.size();
+      data_.resize(row_ptr_[num_data_]);
+      for (size_t tid = 0; tid < t_data_.size(); ++tid) {
+        std::memcpy(data_.data() + offset, t_data_[tid].data(), t_data_[tid].size() * sizeof(VAL_T));
+        offset += t_data_[tid].size();
+        t_data_[tid].clear();
       }
-      row_ptr_[i + 1] = row_ptr_[i] + cnt_feat;
     }
     row_ptr_.shrink_to_fit();
     data_.shrink_to_fit();
+    t_data_.clear();
     t_data_.shrink_to_fit();
   }
 

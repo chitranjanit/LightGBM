@@ -456,7 +456,7 @@ public:
 
   virtual void ReSize(data_size_t num_data) = 0;
 
-  virtual void PushOneRow(data_size_t idx, const std::vector<uint32_t>& values) = 0;
+  virtual void PushOneRow(int tid, data_size_t idx, const std::vector<uint32_t>& values) = 0;
 
   virtual void CopySubset(const Bin* full_bin, const data_size_t* used_indices, data_size_t num_used_indices) = 0;
 
