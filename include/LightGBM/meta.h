@@ -78,8 +78,6 @@ const int kAlignedSize = 32;
 
 #define SIZE_ALIGNED(t) ((t) + kAlignedSize - 1) / kAlignedSize * kAlignedSize
 
-#define TIMETAG 1
-
 }  // namespace LightGBM
 
 #endif   // LightGBM_META_H_
