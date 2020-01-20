@@ -14,13 +14,6 @@
 #include <cstdio>
 #include <sstream>
 #include <unordered_map>
-#if defined(_MSC_VER)
- /* Microsoft C/C++-compatible compiler */
-#include <intrin.h>
-#elif defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__))
- /* GCC-compatible compiler, targeting x86/x86-64 */
-#include <x86intrin.h>
-#endif
 
 
 namespace LightGBM {
@@ -356,7 +349,6 @@ void Dataset::Construct(
     feature_groups_.emplace_back(std::unique_ptr<FeatureGroup>(
       new FeatureGroup(cur_cnt_features, group_is_multi_val[i], &cur_bin_mappers, num_data_)));
   }
-  Log::Info("Total groups %d, multi-val groups %d.", num_groups_, num_multi_val_group);
   feature_groups_.shrink_to_fit();
   group_bin_boundaries_.clear();
   group_bin_boundaries_aligned_.clear();
@@ -1121,7 +1113,7 @@ void Dataset::ConstructHistogramsMultiVal(const MultiValBin* multi_val_bin, cons
   global_timer.Start("Dataset::sparse_bin_histogram_merge");
 
   const int min_bin_block_size = 512;
-  const int n_bin_block = (num_bin + min_bin_block_size - 1) / min_bin_block_size;
+  const int n_bin_block = std::min(num_threads, (num_bin + min_bin_block_size - 1) / min_bin_block_size);
   const int bin_block_size = (num_bin + n_bin_block - 1) / n_bin_block;
   if (!is_constant_hessian) {
     #pragma omp parallel for schedule(static)
