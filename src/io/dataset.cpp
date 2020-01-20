@@ -1122,19 +1122,15 @@ void Dataset::ConstructHistogramsMultiVal(const MultiValBin* multi_val_bin, cons
 
   const int min_bin_block_size = 512;
   const int n_bin_block = (num_bin + min_bin_block_size - 1) / min_bin_block_size;
+  const int bin_block_size = (num_bin + n_bin_block - 1) / n_bin_block;
   if (!is_constant_hessian) {
     #pragma omp parallel for schedule(static)
     for (int t = 0; t < n_bin_block; ++t) {
-      const int start = t * min_bin_block_size;
-      const int end = std::min(start + min_bin_block_size, num_bin);
+      const int start = t * bin_block_size;
+      const int end = std::min(start + bin_block_size, num_bin);
       for (int tid = 1; tid < n_data_block; ++tid) {
         auto src_ptr = hist_buf_.data() + static_cast<size_t>(num_bin_aligned) * 2 * (tid - 1);
-        int rest = (end * 2 - start * 2) % 4;
-        int i = start * 2;
-        for (; i < end * 2 - rest; i += 4) {
-          _mm256_store_pd(hist_data + i, _mm256_add_pd(_mm256_load_pd(hist_data + i), _mm256_load_pd(src_ptr + i)));
-        }
-        for (; i < end * 2; ++i) {
+        for (int i = start * 2; i < end * 2; ++i) {
           hist_data[i] += src_ptr[i];
         }
       }
@@ -1142,16 +1138,11 @@ void Dataset::ConstructHistogramsMultiVal(const MultiValBin* multi_val_bin, cons
   } else {
     #pragma omp parallel for schedule(static)
     for (int t = 0; t < n_bin_block; ++t) {
-      const int start = t * min_bin_block_size;
-      const int end = std::min(start + min_bin_block_size, num_bin);
+      const int start = t * bin_block_size;
+      const int end = std::min(start + bin_block_size, num_bin);
       for (int tid = 1; tid < n_data_block; ++tid) {
         auto src_ptr = hist_buf_.data() + static_cast<size_t>(num_bin_aligned) * 2 * (tid - 1);
-        int rest = (end * 2 - start * 2) % 4;
-        int i = start * 2;
-        for (; i < end * 2 - rest; i += 4) {
-          _mm256_store_pd(hist_data + i, _mm256_add_pd(_mm256_load_pd(hist_data + i), _mm256_load_pd(src_ptr + i)));
-        }
-        for (; i < end * 2; ++i) {
+        for (int i = start * 2; i < end * 2; ++i) {
           hist_data[i] += src_ptr[i];
         }
       }
