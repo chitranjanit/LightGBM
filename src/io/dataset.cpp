@@ -1084,23 +1084,22 @@ void Dataset::ConstructHistogramsMultiVal(const MultiValBin* multi_val_bin, cons
   global_timer.Start("Dataset::sparse_bin_histogram");
   const int num_bin = multi_val_bin->num_bin();
   const int num_bin_aligned = (num_bin + kAlignedSize - 1) / kAlignedSize * kAlignedSize;
-  if (hist_buf_.size() < 2 * num_bin_aligned * (num_threads - 1)) {
-    hist_buf_.resize(2 * num_bin_aligned * (num_threads - 1));
-    Log::Debug("number of buffered bin %d, aligned to %d", num_bin, num_bin_aligned);
+  const int min_data_block_size = 1024;
+  const int n_data_block = std::min(num_threads, (num_data + min_data_block_size - 1) / min_data_block_size);
+  const int data_block_size = (num_data + n_data_block - 1) / n_data_block;
+
+  const size_t buf_size = static_cast<size_t>(n_data_block - 1)* num_bin_aligned * 2;
+  if (hist_buf_.size() < buf_size) {
+    hist_buf_.resize(buf_size);
   }
 
-  const int min_row_size = 1024;
-  const int n_part = std::min(num_threads, (num_data + min_row_size - 1) / min_row_size);
-  const int step = (num_data + n_part - 1) / n_part;
-  auto ori_data_ptr = hist_data;
-
   #pragma omp parallel for schedule(static)
-  for (int tid = 0; tid < n_part; ++tid) {
-    data_size_t start = tid * step;
-    data_size_t end = std::min(start + step, num_data);
-    auto data_ptr = ori_data_ptr;
+  for (int tid = 0; tid < n_data_block; ++tid) {
+    data_size_t start = tid * data_block_size;
+    data_size_t end = std::min(start + data_block_size, num_data);
+    auto data_ptr = hist_data;
     if (tid > 0) {
-      data_ptr = hist_buf_.data() + num_bin_aligned * 2 * (tid - 1);
+      data_ptr = hist_buf_.data() + static_cast<size_t>(num_bin_aligned) * 2 * (tid - 1);
     }
     std::memset(reinterpret_cast<void*>(data_ptr), 0, num_bin* KHistEntrySize);
     if (data_indices != nullptr && num_data < num_data_) {
@@ -1120,43 +1119,44 @@ void Dataset::ConstructHistogramsMultiVal(const MultiValBin* multi_val_bin, cons
   global_timer.Stop("Dataset::sparse_bin_histogram");
 
   global_timer.Start("Dataset::sparse_bin_histogram_merge");
-  const int min_block_size = 512;
-  const int n_hist_merge_block = (num_bin + min_block_size - 1) / min_block_size;
+
+  const int min_bin_block_size = 512;
+  const int n_bin_block = (num_bin + min_bin_block_size - 1) / min_bin_block_size;
   if (!is_constant_hessian) {
     #pragma omp parallel for schedule(static)
-    for (int t = 0; t < n_hist_merge_block; ++t) {
-      const int start = t * min_block_size;
-      const int end = std::min(start + min_block_size, num_bin);
-      for (int tid = 1; tid < n_part; ++tid) {
-        auto src_ptr = hist_buf_.data() + num_bin_aligned * 2 * (tid - 1);
+    for (int t = 0; t < n_bin_block; ++t) {
+      const int start = t * min_bin_block_size;
+      const int end = std::min(start + min_bin_block_size, num_bin);
+      for (int tid = 1; tid < n_data_block; ++tid) {
+        auto src_ptr = hist_buf_.data() + static_cast<size_t>(num_bin_aligned) * 2 * (tid - 1);
         int rest = (end * 2 - start * 2) % 4;
         int i = start * 2;
         for (; i < end * 2 - rest; i += 4) {
-          _mm256_store_pd(ori_data_ptr + i, _mm256_add_pd(_mm256_load_pd(ori_data_ptr + i), _mm256_load_pd(src_ptr + i)));
+          _mm256_store_pd(hist_data + i, _mm256_add_pd(_mm256_load_pd(hist_data + i), _mm256_load_pd(src_ptr + i)));
         }
         for (; i < end * 2; ++i) {
-          ori_data_ptr[i] += src_ptr[i];
+          hist_data[i] += src_ptr[i];
         }
       }
     }
   } else {
     #pragma omp parallel for schedule(static)
-    for (int t = 0; t < n_hist_merge_block; ++t) {
-      const int start = t * min_block_size;
-      const int end = std::min(start + min_block_size, num_bin);
-      for (int tid = 1; tid < n_part; ++tid) {
-        auto src_ptr = hist_buf_.data() + num_bin_aligned * 2 * (tid - 1);
+    for (int t = 0; t < n_bin_block; ++t) {
+      const int start = t * min_bin_block_size;
+      const int end = std::min(start + min_bin_block_size, num_bin);
+      for (int tid = 1; tid < n_data_block; ++tid) {
+        auto src_ptr = hist_buf_.data() + static_cast<size_t>(num_bin_aligned) * 2 * (tid - 1);
         int rest = (end * 2 - start * 2) % 4;
         int i = start * 2;
         for (; i < end * 2 - rest; i += 4) {
-          _mm256_store_pd(ori_data_ptr + i, _mm256_add_pd(_mm256_load_pd(ori_data_ptr + i), _mm256_load_pd(src_ptr + i)));
+          _mm256_store_pd(hist_data + i, _mm256_add_pd(_mm256_load_pd(hist_data + i), _mm256_load_pd(src_ptr + i)));
         }
         for (; i < end * 2; ++i) {
-          ori_data_ptr[i] += src_ptr[i];
+          hist_data[i] += src_ptr[i];
         }
       }
       for (int i = start; i < end; i++) {
-        GET_HESS(ori_data_ptr, i) = GET_HESS(ori_data_ptr, i) * hessians[0];
+        GET_HESS(hist_data, i) = GET_HESS(hist_data, i) * hessians[0];
       }
     }
   }
