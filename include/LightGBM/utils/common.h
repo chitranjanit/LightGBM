@@ -1014,6 +1014,7 @@ public:
   }
 };
 
+// Note: this class is not thread-safe, don't use it inside omp blocks
 class Timer {
  public:
   Timer() {}
@@ -1039,15 +1040,15 @@ class Timer {
   void Print() const {
     #ifdef  TIMETAG
     for (auto it = stats_.begin(); it != stats_.end(); ++it) {
-      Log::Debug("%s costs:\t %f ", it->first.c_str(), it->second * 1e-3);
+      Log::Info("%s costs:\t %f ", it->first.c_str(), it->second * 1e-3);
     }
     #endif
   }
- private:
   std::unordered_map<std::string, std::chrono::steady_clock::time_point> start_time_;
   std::unordered_map<std::string, std::chrono::duration<double, std::milli>> stats_;
 };
 
+// Note: this class is not thread-safe, don't use it inside omp blocks
 class FunctionTimer {
  public:
   FunctionTimer(const std::string& name, Timer& timer): timer_(timer) {

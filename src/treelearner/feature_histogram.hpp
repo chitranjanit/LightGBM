@@ -74,7 +74,6 @@ public:
   * \param other The histogram that want to subtract
   */
   void Subtract(const FeatureHistogram& other) {
-    Common::FunctionTimer fun_timer("FeatureHistogram::Subtract", global_timer);
     for (int i = 0; i < (meta_->num_bin - meta_->offset) * 2; ++i) {
       data_[i] -= other.data_[i];
     }
@@ -82,7 +81,6 @@ public:
 
   void FindBestThreshold(double sum_gradient, double sum_hessian, data_size_t num_data, double min_constraint, double max_constraint,
     SplitInfo* output) {
-    Common::FunctionTimer fun_timer("FeatureHistogram::FindBestThreshold", global_timer);
     output->default_left = true;
     output->gain = kMinScore;
     find_best_threshold_fun_(sum_gradient, sum_hessian + 2 * kEpsilon, num_data, min_constraint, max_constraint, output);
