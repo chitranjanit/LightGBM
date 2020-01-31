@@ -700,20 +700,10 @@ void GPUTreeLearner::InitGPU(int platform_id, int device_id) {
     }
   }
   // determine which kernel to use based on the max number of bins
-  if (max_num_bin_ <= 16) {
-    kernel_source_ = kernel16_src_;
-    kernel_name_ = "histogram16";
-    device_bin_size_ = 16;
-    dword_features_ = 8;
-  } else if (max_num_bin_ <= 64) {
+  if (max_num_bin_ <= 64) {
     kernel_source_ = kernel64_src_;
     kernel_name_ = "histogram64";
     device_bin_size_ = 64;
-    dword_features_ = 4;
-  } else if (max_num_bin_ <= 256) {
-    kernel_source_ = kernel256_src_;
-    kernel_name_ = "histogram256";
-    device_bin_size_ = 256;
     dword_features_ = 4;
   } else {
     Log::Fatal("bin size %d cannot run on GPU", max_num_bin_);
