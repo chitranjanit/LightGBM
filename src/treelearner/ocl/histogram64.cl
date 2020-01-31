@@ -184,7 +184,7 @@ void within_kernel_reduction64x4(uchar4 feature_mask,
     // printf("thread %d: g_val=%f, h_val=%f cnt=%d", ltid, g_val, h_val, cnt_val);
     // now overwrite the local_hist for final reduction and output
     // reverse the f3...f0 order to match the real order
-    feature_id = 2 - feature_id;
+    feature_id = 3 - feature_id;
     local_hist[feature_id * 2 * NUM_BINS + bin_id * 2 + 0] = g_val;
     local_hist[feature_id * 2 * NUM_BINS + bin_id * 2 + 1] = h_val;
     barrier(CLK_LOCAL_MEM_FENCE);
