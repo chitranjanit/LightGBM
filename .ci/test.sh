@@ -15,4 +15,4 @@ conda info
 
 conda list --show-channel-urls
 
-conda install -y -n test_env joblib
+conda install -y -n test_env joblib "scikit-learn<=0.21.3"
