@@ -15,4 +15,4 @@ conda info
 
 conda list --show-channel-urls
 
-conda install -y -n test_env matplotlib
+conda install -y -n test_env joblib
