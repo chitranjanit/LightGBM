@@ -34,7 +34,7 @@ jobs:
   - powershell: Write-Host "##vso[task.prependpath]$env:CONDA\Scripts"
     displayName: Enable conda
   - script: |
-      cmd /c 'activate & conda config --set always_yes yes --set changeps1 no & conda update -q -y conda & conda create -q -y -n test_env python=3.8 & conda info & conda list --show-channel-urls & conda install -y -n test_env joblib'
+      cmd /c 'activate & conda config --set always_yes yes --set changeps1 no & conda update -q -y conda & conda create -q -y -n test_env python=3.8 & conda info & conda list --show-channel-urls & conda install -y -n test_env joblib "scikit-learn<=0.21.3"'
     displayName: Test
   - task: PublishBuildArtifacts@1
     condition: and(succeeded(), in(variables['TASK'], 'regular', 'sdist', 'bdist'), not(startsWith(variables['Build.SourceBranch'], 'refs/pull/')))
